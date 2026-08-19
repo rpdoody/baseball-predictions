@@ -1,6 +1,6 @@
-<img src="https://raw.githubusercontent.com/gmalbert/baseball-predictions/main/data_files/logo.png" width="200" alt="Betting Cleanup logo">
+<img src="data_files/IMG_0185.PNG" width="200" alt="RP Rocket Report">
 
-# Betting Cleanup
+# RP Rocket Report
 
 MLB betting analytics platform for daily wagering insights, model backtesting, and live odds recommendations.
 
