@@ -317,7 +317,7 @@ with tab_bankroll:
     with _col_kelly:
         st.markdown("#### Kelly Calculator")
         _bankroll_size = st.number_input(
-            "Bankroll ($)", min_value=100, max_value=1_000_000, value=1_000, step=100
+            "Bankroll ($)", min_value=100, max_value=1_000_000, value=200, step=2
         )
         _unit_size = st.number_input(
             "Unit size ($)", min_value=1, max_value=10_000, value=50, step=10
