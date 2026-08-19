@@ -1,4 +1,4 @@
-# Baseball Predictions — Architecture
+# Rocket Report — Architecture
 
 ## Overview
 MLB betting analytics platform (app name: formerly baseball-predictions). Generates daily wagering recommendations, backtests models, and displays results via a Streamlit multi-page dashboard.
