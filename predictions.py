@@ -19,25 +19,24 @@ ROOT = Path(__file__).parent.resolve()
 sys.path.insert(0, str(ROOT))
 
 from page_utils import (
-    ROOT,
+    _MLB_TO_RETRO,
     _american_to_implied_prob,
     _fetch_espn_odds,
+    _fetch_pitcher_stats,
     _fetch_team_standings,
     _fetch_todays_schedule,
+    _load_game_context_cache,
     _load_model_results,
     _load_precomputed,
     _prob_bar_html,
     add_betting_oracle_footer,
     init_session_state,
 )
-from src.models.score_distribution import (
-    ScoreDistribution,
-    independent_poisson_score_distribution,
-)
+from src.ingestion.weather import fetch_forecast
+from src.models.contextual_projection import project_contextual_game
 
 
 ET = ZoneInfo("America/New_York")
-_LEAGUE_RUNS_PER_GAME = 4.5
 
 
 def eastern_now() -> datetime.datetime:
@@ -59,6 +58,19 @@ def format_game_time_et(game_datetime: str) -> str:
         return dt_utc.astimezone(ET).strftime("%I:%M %p ET").lstrip("0")
     except (TypeError, ValueError):
         return "TBD"
+
+
+def game_date_et(game_datetime: str, fallback_date: datetime.date) -> str:
+    """Resolve the scheduled game date in Eastern time for weather retrieval."""
+    if not game_datetime:
+        return fallback_date.isoformat()
+    try:
+        dt_utc = datetime.datetime.fromisoformat(game_datetime.replace("Z", "+00:00"))
+        if dt_utc.tzinfo is None:
+            dt_utc = dt_utc.replace(tzinfo=datetime.timezone.utc)
+        return dt_utc.astimezone(ET).date().isoformat()
+    except (TypeError, ValueError):
+        return fallback_date.isoformat()
 
 
 def normalize_team_name(team_name: str | None) -> str:
@@ -83,7 +95,6 @@ def cached_todays_schedule(game_date_iso: str):
     try:
         return _fetch_todays_schedule(game_date)
     except TypeError:
-        # Compatibility fallback while page_utils is updated to accept game_date.
         return _fetch_todays_schedule()
 
 
@@ -97,6 +108,16 @@ def cached_espn_odds():
     return _fetch_espn_odds()
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def cached_pitcher_stats(pitcher_name: str) -> dict:
+    return _fetch_pitcher_stats(pitcher_name)
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def cached_weather(venue_name: str, game_date_iso: str) -> dict | None:
+    return fetch_forecast(venue_name, game_date_iso)
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def cached_model_results():
     return _load_model_results()
@@ -107,46 +128,8 @@ def cached_precomputed():
     return _load_precomputed()
 
 
-def _team_run_rate(team_full: str, opponent_full: str, hist_stnd: pd.DataFrame) -> float:
-    """Estimate expected runs with offensive/defensive historical team context."""
-    try:
-        last = team_full.split()[-1]
-        team_row = hist_stnd[hist_stnd["team"].str.contains(last, case=False, na=False)]
-        opp_last = opponent_full.split()[-1]
-        opp_row = hist_stnd[hist_stnd["team"].str.contains(opp_last, case=False, na=False)]
-        if not team_row.empty and not opp_row.empty:
-            team_row = team_row.sort_values("season").iloc[-1]
-            opp_row = opp_row.sort_values("season").iloc[-1]
-            offense = float(team_row["RS_per_G"])
-            defense = float(opp_row["RA_per_G"])
-            blended = (offense * defense) ** 0.5
-            return 0.7 * blended + 0.3 * _LEAGUE_RUNS_PER_GAME
-    except (KeyError, TypeError, ValueError, AttributeError):
-        pass
-    return _LEAGUE_RUNS_PER_GAME
-
-
-def _coherent_game_distribution(home_full: str, away_full: str, hist_stnd: pd.DataFrame) -> ScoreDistribution:
-    """Build a single score distribution used for ML, RL, and totals."""
-    home_rate = _team_run_rate(home_full, away_full, hist_stnd)
-    away_rate = _team_run_rate(away_full, home_full, hist_stnd)
-    return independent_poisson_score_distribution(away_rate, home_rate)
-
-
 def _short(full_name: str) -> str:
     return full_name.split()[-1] if full_name else ""
-
-
-def _get_rs_g(team_full: str, hist_stnd: pd.DataFrame) -> float:
-    """Most-recent Retrosheet-season RS/G, or league average when unavailable."""
-    try:
-        last = team_full.split()[-1]
-        sub = hist_stnd[hist_stnd["team"].str.contains(last, case=False, na=False)]
-        if not sub.empty:
-            return float(sub.sort_values("season").iloc[-1]["RS_per_G"])
-    except (KeyError, TypeError, ValueError, AttributeError):
-        pass
-    return _LEAGUE_RUNS_PER_GAME
 
 
 def _parse_american(raw) -> int | None:
@@ -166,19 +149,21 @@ def _format_american(value: int | None) -> str:
     return f"+{value}" if value >= 0 else str(value)
 
 
-def _build_game_recs(g: dict, espn_game: dict | None, standings: dict, hist_stnd: pd.DataFrame) -> dict:
-    """Build coherent moneyline, run-line, and total recommendations for one game."""
-    del standings  # Retained in the signature for compatibility with callers.
-
-    home_full = g.get("home_name", "")
-    away_full = g.get("away_name", "")
-    dist = _coherent_game_distribution(home_full, away_full, hist_stnd)
-    home_prob = dist.home_moneyline()
-    away_prob = 1.0 - home_prob - dist.tie_probability()
-    recs: dict = {}
-
+def _build_game_recs(
+    game: dict,
+    espn_game: dict | None,
+    projection,
+) -> dict:
+    """Build ML, run-line, and total recommendations from one contextual model."""
     if not espn_game:
-        return recs
+        return {}
+
+    home_full = game.get("home_name", "")
+    away_full = game.get("away_name", "")
+    dist = projection.distribution
+    home_prob = projection.home_win_probability
+    away_prob = projection.away_win_probability
+    recs: dict = {}
 
     ml_h = _parse_american(espn_game.get("ml_home"))
     ml_a = _parse_american(espn_game.get("ml_away"))
@@ -206,8 +191,6 @@ def _build_game_recs(g: dict, espn_game: dict | None, standings: dict, hist_stnd
     spread_h = _parse_american(espn_game.get("spread_home"))
     spread_a = _parse_american(espn_game.get("spread_away"))
     if spread_h is not None and spread_a is not None:
-        # The lower American moneyline identifies the favorite. If ML prices are
-        # absent, infer the -1.5 side from standard run-line price structure.
         if ml_h is not None and ml_a is not None:
             home_favorite = ml_h < ml_a
         else:
@@ -215,10 +198,12 @@ def _build_game_recs(g: dict, espn_game: dict | None, standings: dict, hist_stnd
 
         if home_favorite:
             home_rl, away_rl, _push_rl = dist.run_line_probabilities(-1.5)
-            home_pick, away_pick = f"{_short(home_full)} −1.5", f"{_short(away_full)} +1.5"
+            home_pick = f"{_short(home_full)} −1.5"
+            away_pick = f"{_short(away_full)} +1.5"
         else:
             away_rl, home_rl, _push_rl = dist.run_line_probabilities(-1.5)
-            home_pick, away_pick = f"{_short(home_full)} +1.5", f"{_short(away_full)} −1.5"
+            home_pick = f"{_short(home_full)} +1.5"
+            away_pick = f"{_short(away_full)} −1.5"
 
         impl_h = _american_to_implied_prob(spread_h)
         impl_a = _american_to_implied_prob(spread_a)
@@ -244,9 +229,9 @@ def _build_game_recs(g: dict, espn_game: dict | None, standings: dict, hist_stnd
         posted = float(espn_game.get("over_under"))
     except (TypeError, ValueError):
         posted = None
+
     over_price = _parse_american(espn_game.get("over_odds"))
     under_price = _parse_american(espn_game.get("under_odds"))
-
     if posted is not None and over_price is not None and under_price is not None:
         raw_over, raw_under, _push_prob = dist.total_probabilities(posted)
         over_prob = max(0.20, min(0.80, raw_over))
@@ -255,7 +240,7 @@ def _build_game_recs(g: dict, espn_game: dict | None, standings: dict, hist_stnd
         impl_under = _american_to_implied_prob(under_price)
         recs["ou"] = {
             "posted": posted,
-            "exp_total": _get_rs_g(home_full, hist_stnd) + _get_rs_g(away_full, hist_stnd),
+            "exp_total": projection.total_runs,
             "over": {
                 "pick": f"Over {posted}",
                 "odds_str": _format_american(over_price),
@@ -303,6 +288,16 @@ def _rec_card_html(label: str, side: dict, exp_info: str) -> str:
     )
 
 
+def _projection_summary(projection) -> str:
+    """Compact, transparent context summary for the prediction card."""
+    adj = projection.adjustments
+    return (
+        f"Projected score: {projection.away_runs:.2f} away / {projection.home_runs:.2f} home "
+        f"· Park ×{adj.get('park_multiplier', 1.0):.2f} "
+        f"· Weather ×{adj.get('weather_multiplier', 1.0):.2f}"
+    )
+
+
 st.set_page_config(
     page_title="RP Rocket Report - MLB Predictions",
     page_icon="",
@@ -324,7 +319,7 @@ st.markdown(
 
 
 def home_page() -> None:
-    """Landing page: hero metrics and per-game betting recommendations."""
+    """Landing page: contextual game forecasts and betting recommendations."""
     today_et = eastern_today()
 
     hdr_left, hdr_right = st.columns([1, 5])
@@ -348,6 +343,7 @@ def home_page() -> None:
     model_results = cached_model_results()
     precomputed = cached_precomputed()
     hist_stnd = precomputed["standings"]
+    game_context = _load_game_context_cache()
     init_session_state()
 
     games_with_odds = sum(
@@ -371,8 +367,9 @@ def home_page() -> None:
     else:
         st.markdown("### 🎯 Today's Games & Betting Recommendations")
         st.caption(
-            "Win probability, run line, and O/U use one coherent score distribution from each team's "
-            "runs-scored/allowed baseline. ✅ BET = edge > 3% · ➡ LEAN = 0–3% · ⛔ PASS = negative edge."
+            "Contextual run projections include historical offense/defense, probable starters, bullpen workload proxy, "
+            "park factor, weather, day/night context, and home field. "
+            "✅ BET = edge > 3% · ➡ LEAN = 0–3% · ⛔ PASS = negative edge."
         )
 
         status_labels = {
@@ -394,6 +391,23 @@ def home_page() -> None:
             status = game.get("status", "Scheduled")
             venue = game.get("venue_name", "—")
             game_time = format_game_time_et(game.get("game_datetime", ""))
+            away_retro = _MLB_TO_RETRO.get(away_full, away_full)
+            home_retro = _MLB_TO_RETRO.get(home_full, home_full)
+            game_date = game_date_et(game.get("game_datetime", ""), today_et)
+
+            away_pitcher_stats = cached_pitcher_stats(away_sp)
+            home_pitcher_stats = cached_pitcher_stats(home_sp)
+            weather = cached_weather(venue, game_date) if venue else None
+            projection = project_contextual_game(
+                game=game,
+                hist_stnd=hist_stnd,
+                game_context=game_context,
+                away_retro=away_retro,
+                home_retro=home_retro,
+                away_pitcher_stats=away_pitcher_stats,
+                home_pitcher_stats=home_pitcher_stats,
+                weather=weather,
+            )
 
             score_str = ""
             if str(status).lower() in {"final", "game over", "in progress", "live", "completed"}:
@@ -401,8 +415,8 @@ def home_page() -> None:
                     score_str = f" &nbsp;·&nbsp; **{game['away_score']}–{game['home_score']}**"
 
             espn_game = next((odds for odds in espn_odds if is_matching_odds_game(game, odds)), None)
-            recs = _build_game_recs(game, espn_game, standings, hist_stnd)
-            home_prob = _coherent_game_distribution(home_full, away_full, hist_stnd).home_moneyline()
+            recs = _build_game_recs(game, espn_game, projection)
+            home_prob = projection.home_win_probability
 
             with st.container(border=True):
                 hdr_c1, hdr_c2 = st.columns([3, 2])
@@ -416,6 +430,12 @@ def home_page() -> None:
                     )
                 with hdr_c2:
                     st.markdown(_prob_bar_html(home_prob, home_full, away_full), unsafe_allow_html=True)
+
+                st.caption(_projection_summary(projection))
+                if projection.warnings:
+                    with st.expander("Projection data notes", expanded=False):
+                        for warning in sorted(set(projection.warnings)):
+                            st.caption(f"• {warning}")
 
                 if not recs:
                     st.caption("⏳ Odds not yet available for this game.")
@@ -454,7 +474,7 @@ def home_page() -> None:
                         ou = recs["ou"]
                         side = ou[ou["best"]]
                         other = ou["under" if ou["best"] == "over" else "over"]
-                        exp = f"Exp total: {ou['exp_total']:.1f} · Posted: {ou['posted']} · Impl: {side['impl']:.0%}"
+                        exp = f"Model total: {ou['exp_total']:.1f} · Posted: {ou['posted']} · Impl: {side['impl']:.0%}"
                         st.markdown(_rec_card_html("OU", side, exp), unsafe_allow_html=True)
                         st.caption(f"Other side: {other['pick']} {other['odds_str']} (edge {other['edge'] * 100:+.1f}%)")
                     else:
