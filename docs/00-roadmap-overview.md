@@ -1,4 +1,4 @@
-# Baseball Predictions – Master Roadmap
+# Rocket Report – Master Roadmap
 
 ## Vision
 A baseball betting site that ingests 5+ years of MLB data, runs multiple prediction models (moneyline underdog, run-line spread, over/under totals), and surfaces daily picks with confidence scores and transparent model-performance metrics.
