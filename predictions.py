@@ -374,7 +374,7 @@ def home_page() -> None:
     # Header
     hdr_left, hdr_right = st.columns([1, 5])
     with hdr_left:
-        _logo = ROOT / "data_files" / "IMG_0185.png"
+        _logo = ROOT / "data_files" / "IMG_0185.PNG"
         if _logo.exists():
             st.image(str(_logo), width=110)
     with hdr_right:
