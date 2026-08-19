@@ -374,12 +374,12 @@ def home_page() -> None:
     # Header
     hdr_left, hdr_right = st.columns([1, 5])
     with hdr_left:
-        _logo = ROOT / "data_files" / "IMG_0185.JPG"
+        _logo = ROOT / "data_files" / "IMG_0185.png"
         if _logo.exists():
             st.image(str(_logo), width=110)
     with hdr_right:
         st.markdown(
-            f"<h1 style='margin-bottom:0;color:#002D72'>⚾ Betting Cleanup</h1>"
+            f"<h1 style='margin-bottom:0;color:#002D72'>RP Rocket Report</h1>"
             f"<p style='color:#6b7280;margin-top:2px'>MLB Predictions &nbsp;·&nbsp; "
             f"{datetime.date.today().strftime('%A, %B %d, %Y')}</p>",
             unsafe_allow_html=True,
