@@ -26,3 +26,8 @@ FOOTER_HTML = """
 def add_perplexity_footer() -> None:
     """Render the shared Perplexity footer."""
     st.markdown(FOOTER_HTML, unsafe_allow_html=True)
+
+
+def add_betting_oracle_footer() -> None:
+    """Backward-compatible alias for older page imports."""
+    add_perplexity_footer()
