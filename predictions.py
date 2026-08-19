@@ -1,5 +1,5 @@
 """
-Entry point for the Betting Cleanup MLB dashboard.
+Entry point for the Rocket Report MLB dashboard.
 
   - st.set_page_config()  called exactly once here
   - home_page()           landing page with per-game betting recommendations
@@ -80,7 +80,7 @@ def _coherent_game_distribution(
 
 
 st.set_page_config(
-    page_title="Betting Cleanup - MLB Predictions",
+    page_title="RP Rocket Report - MLB Predictions",
     page_icon="⚾",
     layout="wide",
     initial_sidebar_state="expanded",
