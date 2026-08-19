@@ -184,7 +184,7 @@ class BankrollState:
 class BankrollTracker:
     """Manage and track a user's betting bankroll."""
     
-    def __init__(self, starting_bankroll: float = 10000, unit_size: float = 100):
+    def __init__(self, starting_bankroll: float = 200, unit_size: float = 2):
         self.starting_bankroll = starting_bankroll
         self.current_bankroll = starting_bankroll
         self.unit_size = unit_size  # $100 per unit
@@ -410,7 +410,7 @@ def load_bets() -> pd.DataFrame:
     return pd.read_parquet(BETS_FILE)
 
 
-def get_bankroll_summary(starting_bankroll: float = 10000) -> dict:
+def get_bankroll_summary(starting_bankroll: float = 200) -> dict:
     """Compute bankroll summary from bet history."""
     df = load_bets()
     if df.empty:
