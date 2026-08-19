@@ -29,13 +29,7 @@ FOOTER_HTML = """
         </a>
     </p>
 
-    <p style="
-        margin: 0;
-        font-size: 12px;
-        color: #888;
-        font-family: sans-serif;
-        line-height: 1.5;
-    ">
+   
         MLB analytics and prediction research<br>
         All content is for informational purposes only and does not constitute
         betting or financial advice. Wager responsibly.
