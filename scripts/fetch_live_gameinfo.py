@@ -119,11 +119,18 @@ def normalize_game(game: dict) -> dict:
 
 
 def load_existing() -> pd.DataFrame:
-    """Load existing output if present, otherwise return an empty compatible frame."""
-    if OUTPUT_PATH.exists():
-        return pd.read_parquet(OUTPUT_PATH)
+    """Load valid prior output; ignore an absent, empty, or corrupt parquet."""
+    if not OUTPUT_PATH.exists() or OUTPUT_PATH.stat().st_size == 0:
+        return pd.DataFrame()
 
-    return pd.DataFrame()
+    try:
+        return pd.read_parquet(OUTPUT_PATH)
+    except Exception as exc:
+        print(
+            f"Warning: ignoring unreadable existing output "
+            f"({OUTPUT_PATH.name}): {exc}"
+        )
+        return pd.DataFrame()
 
 
 def main() -> None:
