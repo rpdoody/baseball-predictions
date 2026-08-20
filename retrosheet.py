@@ -7,12 +7,12 @@ from __future__ import annotations
 
 import datetime
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 import streamlit as st
 
 RAW_DIR = Path(__file__).parent / "data_files" / "retrosheet"
+LIVE_GAMEINFO_DIR = Path(__file__).parent / "data_files" / "processed"
 MODERN_START = 2020  # default cutoff year
 
 # ---------------------------------------------------------------------------
@@ -31,7 +31,6 @@ TEAM_NAMES: dict[str, str] = {
     "SLN": "Cardinals", "TBA": "Rays", "TEX": "Rangers",
     "TOR": "Blue Jays", "WAS": "Nationals", "WSN": "Nationals",
     "FLO": "Marlins", "CAL": "Angels", "TBD": "Rays",
-    "MIL": "Brewers",
 }
 
 
@@ -53,45 +52,205 @@ def _extract_year(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series.astype(str).str[:4], errors="coerce")
 
 
+
 def _read_with_supplement(primary: Path, supplement: Path) -> pd.DataFrame:
-    """Load a parquet file, optionally concat a supplement if it exists."""
+    """Load a parquet file, optionally concatenate a supplement if it exists."""
     df = pd.read_parquet(primary)
+
     if supplement.exists():
-        supp = pd.read_parquet(supplement)
-        # Cast category columns in the primary back to object so concat works.
-        cat_cols = df.select_dtypes("category").columns.tolist()
-        for col in cat_cols:
-            df[col] = df[col].astype(object)
-        df = pd.concat([df, supp], ignore_index=True)
+        supplement_df = pd.read_parquet(supplement)
+
+        category_columns = df.select_dtypes("category").columns.tolist()
+        for column in category_columns:
+            df[column] = df[column].astype(object)
+
+        df = pd.concat(
+            [df, supplement_df],
+            ignore_index=True,
+            sort=False,
+        )
+
     return df
 
+def _read_live_gameinfo() -> pd.DataFrame:
+    """
+    Load completed game results produced by scripts/fetch_live_gameinfo.py.
+
+    Live data stays separate from historical Retrosheet data until
+    `load_gameinfo()` merges both datasets in memory.
+    """
+    live_files = sorted(
+        LIVE_GAMEINFO_DIR.glob("live_gameinfo_*.parquet")
+    )
+
+    if not live_files:
+        return pd.DataFrame()
+
+    required_columns = {
+        "game_id",
+        "season",
+        "date",
+        "visteam",
+        "hometeam",
+        "vruns",
+        "hruns",
+        "wteam",
+    }
+
+    frames: list[pd.DataFrame] = []
+
+    for path in live_files:
+        try:
+            if path.stat().st_size == 0:
+                print(f"Skipping empty live gameinfo file: {path.name}")
+                continue
+
+            live = pd.read_parquet(path)
+
+            if live.empty:
+                continue
+
+            missing_columns = required_columns - set(live.columns)
+            if missing_columns:
+                print(
+                    f"Skipping {path.name}: missing columns "
+                    f"{sorted(missing_columns)}"
+                )
+                continue
+
+            live = live.copy()
+
+            if "gid" not in live.columns:
+                live["gid"] = pd.NA
+
+            live["gid"] = live["gid"].fillna(
+                live["game_id"].map(
+                    lambda game_id: f"MLB{game_id}"
+                )
+            )
+
+            for column, default_value in {
+                "lteam": pd.NA,
+                "daynight": "",
+                "attendance": pd.NA,
+                "temp": pd.NA,
+                "windspeed": pd.NA,
+            }.items():
+                if column not in live.columns:
+                    live[column] = default_value
+
+            frames.append(live)
+
+        except Exception as exc:
+            print(
+                f"Could not read live gameinfo file {path.name}: {exc}"
+            )
+
+    if not frames:
+        return pd.DataFrame()
+
+    live_df = pd.concat(
+        frames,
+        ignore_index=True,
+        sort=False,
+    )
+
+    for column in ("season", "date", "vruns", "hruns"):
+        live_df[column] = pd.to_numeric(
+            live_df[column],
+            errors="coerce",
+        )
+
+    live_df = (
+        live_df.sort_values(["date", "game_id"])
+        .drop_duplicates(subset=["game_id"], keep="last")
+        .reset_index(drop=True)
+    )
+
+    return live_df
 
 # ---------------------------------------------------------------------------
 # Game Info
 # ---------------------------------------------------------------------------
 
-@st.cache_data(show_spinner=False)
-def load_gameinfo(min_year: int = MODERN_START, max_year: int = datetime.date.today().year) -> pd.DataFrame:
+@st.cache_data(show_spinner=False, ttl=1800)
+def load_gameinfo(
+    min_year: int = MODERN_START,
+    max_year: int = datetime.date.today().year,
+) -> pd.DataFrame:
     """
-    Loads gameinfo.csv and returns one row per game with key fields.
-    Filters to regular-season games within [min_year, max_year].
+    Load regular-season historical Retrosheet gameinfo plus live MLB game data.
+
+    Historical Retrosheet data remains immutable. Current-season completed games
+    are read from data_files/processed/live_gameinfo_<year>.parquet and merged
+    only at load time.
     """
     min_year = max(min_year, MODERN_START)
-    df = _read_with_supplement(RAW_DIR / "gameinfo.parquet", RAW_DIR / "gameinfo_current.parquet")
-    df["season"] = pd.to_numeric(df["season"], errors="coerce")
-    df = df[(df["season"] >= min_year) & (df["season"] <= max_year)]
-    df["date"] = _parse_retrodate(df["date"])
-    df["vruns"] = pd.to_numeric(df["vruns"], errors="coerce")
-    df["hruns"] = pd.to_numeric(df["hruns"], errors="coerce")
-    df["attendance"] = pd.to_numeric(df["attendance"], errors="coerce")
-    df["temp"] = pd.to_numeric(df["temp"], errors="coerce")
-    df["windspeed"] = pd.to_numeric(df["windspeed"], errors="coerce")
-    df["total_runs"] = df["vruns"] + df["hruns"]
-    df["run_diff"] = df["hruns"] - df["vruns"]  # positive = home win margin
-    for col in ("visteam", "hometeam", "wteam", "lteam"):
-        if col in df.columns:
-            df[col] = df[col].map(_team_name)
-    return df.reset_index(drop=True)
+
+    historical = _read_with_supplement(
+        RAW_DIR / "gameinfo.parquet",
+        RAW_DIR / "gameinfo_current.parquet",
+    )
+
+    live = _read_live_gameinfo()
+
+    # Ensure historical/live concat has compatible object dtypes where needed.
+    category_cols = historical.select_dtypes("category").columns.tolist()
+    for col in category_cols:
+        historical[col] = historical[col].astype(object)
+
+    if not live.empty:
+        combined = pd.concat(
+            [historical, live],
+            ignore_index=True,
+            sort=False,
+        )
+    else:
+        combined = historical
+
+    combined["season"] = pd.to_numeric(
+        combined["season"],
+        errors="coerce",
+    )
+
+    combined = combined[
+        combined["season"].between(min_year, max_year)
+    ].copy()
+
+    combined["date"] = _parse_retrodate(combined["date"])
+    combined["vruns"] = pd.to_numeric(
+        combined["vruns"],
+        errors="coerce",
+    )
+    combined["hruns"] = pd.to_numeric(
+        combined["hruns"],
+        errors="coerce",
+    )
+
+    for column in ("attendance", "temp", "windspeed"):
+        if column not in combined.columns:
+            combined[column] = pd.NA
+        combined[column] = pd.to_numeric(
+            combined[column],
+            errors="coerce",
+        )
+
+    combined["total_runs"] = combined["vruns"] + combined["hruns"]
+    combined["run_diff"] = combined["hruns"] - combined["vruns"]
+
+    # The historical dataset may include game IDs that differ from the live
+    # MLB gamePk IDs. Dedupe live MLB snapshots only, by its distinct gid form.
+    if "gid" in combined.columns:
+        combined = (
+            combined.sort_values(["date", "gid"], na_position="last")
+            .drop_duplicates(subset=["gid"], keep="last")
+        )
+
+    for column in ("visteam", "hometeam", "wteam", "lteam"):
+        if column in combined.columns:
+            combined[column] = combined[column].map(_team_name)
+
+    return combined.reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------------
