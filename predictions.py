@@ -3,7 +3,7 @@ Entry point for the Rocket Report MLB dashboard.
 
   - st.set_page_config()  called exactly once here
   - home_page()           landing page with per-game betting recommendations
-  - st.navigation()       6-page sidebar navigation
+  - st.navigation()       6-page top navigation (mobile-friendly)
 """
 
 import datetime
