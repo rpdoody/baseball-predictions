@@ -142,7 +142,6 @@ def _read_live_gameinfo() -> pd.DataFrame:
                 )
             )
             for column, default_value in {
-                "lteam": pd.NA,
                 "daynight": "",
                 "attendance": pd.NA,
                 "temp": pd.NA,
