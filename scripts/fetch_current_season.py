@@ -67,7 +67,7 @@ ABBREV_TO_RETRO: dict[str, str] = {
 
 # Known Opening Day dates.  Anything not listed defaults to March 27.
 OPENING_DAYS: dict[int, str] = {
-    2026: "2026-03-27",
+    2026: "2026-03-25",
     2025: "2025-03-27",
     2024: "2024-03-20",
     2023: "2023-03-30",
@@ -144,16 +144,36 @@ def _last_word(s: str | None) -> str:
 
 
 def _fetch_schedule(season: int, season_start: str) -> list[dict]:
-    """Return all completed regular-season games from Opening Day through today."""
-    today = datetime.date.today().isoformat()
-    raw = _statsapi_retry(statsapi.schedule, start_date=season_start, end_date=today, sportId=1)
+    """Return completed regular-season games from Opening Day through yesterday."""
+    today = datetime.date.today()
+    season_end = datetime.date(season, 12, 31)
+    end_date = min(
+        today - datetime.timedelta(days=1),
+        season_end,
+    )
+
+    raw = _statsapi_retry(
+        statsapi.schedule,
+        start_date=season_start,
+        end_date=end_date.isoformat(),
+        sportId=1,
+    )
+
     completed = [
-        g
-        for g in raw
-        if g.get("game_type") == "R"
-        and g.get("status") in ("Final", "Game Over", "Completed Early")
+        game
+        for game in (raw or [])
+        if game.get("game_type") == "R"
+        and str(game.get("status", "")).strip().lower()
+        in {"final", "game over", "completed", "completed early"}
+        and game.get("away_score") is not None
+        and game.get("home_score") is not None
     ]
-    print(f"Found {len(completed)} completed regular-season games through {today}.")
+
+    print(
+        f"Found {len(completed)} completed regular-season games "
+        f"through {end_date.isoformat()}."
+    )
+
     return completed
 
 
