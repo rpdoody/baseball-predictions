@@ -128,7 +128,19 @@ def _read_live_gameinfo() -> pd.DataFrame:
                     lambda game_id: f"MLB{game_id}"
                 )
             )
+            if "lteam" not in live.columns:
+                live["lteam"] = pd.NA
 
+            live["lteam"] = live["lteam"].fillna(
+                live.apply(
+                    lambda row: (
+                        row["hometeam"]
+                        if row["wteam"] == row["visteam"]
+                        else row["visteam"]
+                    ),
+                    axis=1,
+                )
+            )
             for column, default_value in {
                 "lteam": pd.NA,
                 "daynight": "",
@@ -179,11 +191,11 @@ def load_gameinfo(
     max_year: int = datetime.date.today().year,
 ) -> pd.DataFrame:
     """
-    Load regular-season historical Retrosheet gameinfo plus live MLB game data.
+    Load historical Retrosheet gameinfo plus live MLB game data.
 
-    Historical Retrosheet data remains immutable. Current-season completed games
-    are read from data_files/processed/live_gameinfo_<year>.parquet and merged
-    only at load time.
+    A live parquet is authoritative for any season it covers. This avoids
+    merging overlapping records with differing game IDs and preserves
+    doubleheaders.
     """
     min_year = max(min_year, MODERN_START)
 
@@ -194,19 +206,31 @@ def load_gameinfo(
 
     live = _read_live_gameinfo()
 
-    # Ensure historical/live concat has compatible object dtypes where needed.
-    category_cols = historical.select_dtypes("category").columns.tolist()
-    for col in category_cols:
-        historical[col] = historical[col].astype(object)
+    for column in historical.select_dtypes("category").columns:
+        historical[column] = historical[column].astype(object)
 
-    if not live.empty:
+    if live.empty:
+        combined = historical.copy()
+    else:
+        live_seasons = set(
+            pd.to_numeric(live["season"], errors="coerce")
+            .dropna()
+            .astype(int)
+        )
+
+        # Live files are authoritative for seasons they cover.
+        historical = historical[
+            ~pd.to_numeric(
+                historical["season"],
+                errors="coerce",
+            ).isin(live_seasons)
+        ].copy()
+
         combined = pd.concat(
             [historical, live],
             ignore_index=True,
             sort=False,
         )
-    else:
-        combined = historical
 
     combined["season"] = pd.to_numeric(
         combined["season"],
@@ -230,21 +254,18 @@ def load_gameinfo(
     for column in ("attendance", "temp", "windspeed"):
         if column not in combined.columns:
             combined[column] = pd.NA
+
         combined[column] = pd.to_numeric(
             combined[column],
             errors="coerce",
         )
 
-    combined["total_runs"] = combined["vruns"] + combined["hruns"]
-    combined["run_diff"] = combined["hruns"] - combined["vruns"]
-
-    # The historical dataset may include game IDs that differ from the live
-    # MLB gamePk IDs. Dedupe live MLB snapshots only, by its distinct gid form.
-    if "gid" in combined.columns:
-        combined = (
-            combined.sort_values(["date", "gid"], na_position="last")
-            .drop_duplicates(subset=["gid"], keep="last")
-        )
+    combined["total_runs"] = (
+        combined["vruns"] + combined["hruns"]
+    )
+    combined["run_diff"] = (
+        combined["hruns"] - combined["vruns"]
+    )
 
     for column in ("visteam", "hometeam", "wteam", "lteam"):
         if column in combined.columns:
