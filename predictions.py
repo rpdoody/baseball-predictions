@@ -23,7 +23,6 @@ from page_utils import (
     _american_to_implied_prob,
     _fetch_espn_odds,
     _fetch_pitcher_stats,
-    _fetch_team_standings,
     _fetch_todays_schedule,
     _load_game_context_cache,
     _load_model_results,
@@ -61,7 +60,7 @@ def format_game_time_et(game_datetime: str) -> str:
 
 
 def game_date_et(game_datetime: str, fallback_date: datetime.date) -> str:
-    """Resolve the scheduled game date in Eastern time for weather retrieval."""
+    """Resolve a scheduled game date in Eastern time for weather retrieval."""
     if not game_datetime:
         return fallback_date.isoformat()
     try:
@@ -79,7 +78,7 @@ def normalize_team_name(team_name: str | None) -> str:
 
 
 def is_matching_odds_game(game: dict, odds_game: dict) -> bool:
-    """Match both teams and their designated home/away orientation."""
+    """Require exact normalized home and away team matches."""
     return (
         normalize_team_name(game.get("home_name"))
         == normalize_team_name(odds_game.get("home_team"))
@@ -89,23 +88,25 @@ def is_matching_odds_game(game: dict, odds_game: dict) -> bool:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def cached_todays_schedule(game_date_iso: str):
-    """Load the schedule using an explicit Eastern calendar date."""
+def cached_todays_schedule(game_date_iso: str) -> list[dict]:
+    """Load the MLB schedule for an explicit ET calendar date."""
     game_date = datetime.date.fromisoformat(game_date_iso)
-    try:
-        return _fetch_todays_schedule(game_date)
-    except TypeError:
-        return _fetch_todays_schedule()
-
-
-@st.cache_data(ttl=900, show_spinner=False)
-def cached_standings():
-    return _fetch_team_standings()
+    return _fetch_todays_schedule(game_date)
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def cached_espn_odds():
-    return _fetch_espn_odds()
+def cached_espn_odds(game_date_iso: str) -> list[dict]:
+    """Load ESPN odds for the selected schedule date.
+
+    Requires page_utils._fetch_espn_odds(game_date: date | None) to support
+    its optional date argument. A compatibility fallback preserves the app
+    while that helper is being updated.
+    """
+    game_date = datetime.date.fromisoformat(game_date_iso)
+    try:
+        return _fetch_espn_odds(game_date)
+    except TypeError:
+        return _fetch_espn_odds()
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -149,12 +150,8 @@ def _format_american(value: int | None) -> str:
     return f"+{value}" if value >= 0 else str(value)
 
 
-def _build_game_recs(
-    game: dict,
-    espn_game: dict | None,
-    projection,
-) -> dict:
-    """Build ML, run-line, and total recommendations from one contextual model."""
+def _build_game_recs(game: dict, espn_game: dict | None, projection) -> dict:
+    """Build ML, run-line, and total recommendations from one model distribution."""
     if not espn_game:
         return {}
 
@@ -191,19 +188,14 @@ def _build_game_recs(
     spread_h = _parse_american(espn_game.get("spread_home"))
     spread_a = _parse_american(espn_game.get("spread_away"))
     if spread_h is not None and spread_a is not None:
-        if ml_h is not None and ml_a is not None:
-            home_favorite = ml_h < ml_a
-        else:
-            home_favorite = spread_h > 0 and spread_a <= 0
+        home_favorite = ml_h < ml_a if ml_h is not None and ml_a is not None else spread_h > 0 and spread_a <= 0
 
         if home_favorite:
             home_rl, away_rl, _push_rl = dist.run_line_probabilities(-1.5)
-            home_pick = f"{_short(home_full)} −1.5"
-            away_pick = f"{_short(away_full)} +1.5"
+            home_pick, away_pick = f"{_short(home_full)} −1.5", f"{_short(away_full)} +1.5"
         else:
             away_rl, home_rl, _push_rl = dist.run_line_probabilities(-1.5)
-            home_pick = f"{_short(home_full)} +1.5"
-            away_pick = f"{_short(away_full)} −1.5"
+            home_pick, away_pick = f"{_short(home_full)} +1.5", f"{_short(away_full)} −1.5"
 
         impl_h = _american_to_implied_prob(spread_h)
         impl_a = _american_to_implied_prob(spread_a)
@@ -229,9 +221,9 @@ def _build_game_recs(
         posted = float(espn_game.get("over_under"))
     except (TypeError, ValueError):
         posted = None
-
     over_price = _parse_american(espn_game.get("over_odds"))
     under_price = _parse_american(espn_game.get("under_odds"))
+
     if posted is not None and over_price is not None and under_price is not None:
         raw_over, raw_under, _push_prob = dist.total_probabilities(posted)
         over_prob = max(0.20, min(0.80, raw_over))
@@ -274,27 +266,25 @@ def _rec_card_html(label: str, side: dict, exp_info: str) -> str:
 
     pick_text = _short(side["team"]) if side.get("team") else side.get("pick", "—")
     return (
-        f'<div style="background:{color}18;border-left:4px solid {color};'
-        f'padding:8px 12px;border-radius:0 6px 6px 0;margin-bottom:4px">'
+        f'<div style="background:{color}18;border-left:4px solid {color};padding:8px 12px;'
+        f'border-radius:0 6px 6px 0;margin-bottom:4px">'
         f'<div style="display:flex;justify-content:space-between;align-items:center">'
         f'<b style="font-size:0.88rem">{pick_text}</b>'
         f'<span style="background:{color};color:white;border-radius:6px;padding:1px 8px;'
         f'font-size:0.7rem;font-weight:700">{badge}</span></div>'
-        f'<div style="font-size:0.78rem;color:#555;margin-top:2px">'
-        f"Odds: <b>{side['odds_str']}</b>"
+        f'<div style="font-size:0.78rem;color:#555;margin-top:2px">Odds: <b>{side["odds_str"]}</b>'
         f' &nbsp;|&nbsp; Edge: <b style="color:{color}">{edge_pct:+.1f}%</b></div>'
-        f'<div style="font-size:0.73rem;color:#888">{exp_info}</div>'
-        f"</div>"
+        f'<div style="font-size:0.73rem;color:#888">{exp_info}</div></div>'
     )
 
 
 def _projection_summary(projection) -> str:
-    """Compact, transparent context summary for the prediction card."""
-    adj = projection.adjustments
+    """Compact, transparent context summary for a prediction card."""
+    adjustments = projection.adjustments
     return (
         f"Projected score: {projection.away_runs:.2f} away / {projection.home_runs:.2f} home "
-        f"· Park ×{adj.get('park_multiplier', 1.0):.2f} "
-        f"· Weather ×{adj.get('weather_multiplier', 1.0):.2f}"
+        f"· Park ×{adjustments.get('park_multiplier', 1.0):.2f} "
+        f"· Weather ×{adjustments.get('weather_multiplier', 1.0):.2f}"
     )
 
 
@@ -319,8 +309,8 @@ st.markdown(
 
 
 def home_page() -> None:
-    """Landing page: contextual game forecasts and betting recommendations."""
-    today_et = eastern_today()
+    """Landing page: date-selectable contextual forecasts and betting cards."""
+    default_date = eastern_today()
 
     hdr_left, hdr_right = st.columns([1, 5])
     with hdr_left:
@@ -329,17 +319,31 @@ def home_page() -> None:
             st.image(str(logo), width=110)
     with hdr_right:
         st.markdown(
-            f"<h1 style='margin-bottom:0;color:#002D72'>RP Rocket Report</h1>"
-            f"<p style='color:#6b7280;margin-top:2px'>MLB Predictions &nbsp;·&nbsp; "
-            f"{today_et.strftime('%A, %B %d, %Y')}</p>",
+            "<h1 style='margin-bottom:0;color:#002D72'>RP Rocket Report</h1>"
+            "<p style='color:#6b7280;margin-top:2px'>MLB Predictions</p>",
+            unsafe_allow_html=True,
+        )
+
+    date_col, spacer_col = st.columns([1, 4])
+    with date_col:
+        selected_date = st.date_input(
+            "Schedule date",
+            value=default_date,
+            key="home_schedule_date",
+        )
+    with spacer_col:
+        st.markdown(
+            f"<div style='padding-top:30px;color:#6b7280'>"
+            f"Viewing: <b>{selected_date.strftime('%A, %B %d, %Y')}</b> (ET)"
+            f"</div>",
             unsafe_allow_html=True,
         )
 
     st.markdown("---")
 
-    games_today = cached_todays_schedule(today_et.isoformat())
-    standings = cached_standings()
-    espn_odds = cached_espn_odds()
+    selected_date_iso = selected_date.isoformat()
+    games_today = cached_todays_schedule(selected_date_iso)
+    espn_odds = cached_espn_odds(selected_date_iso)
     model_results = cached_model_results()
     precomputed = cached_precomputed()
     hist_stnd = precomputed["standings"]
@@ -354,18 +358,26 @@ def home_page() -> None:
     roc_auc = moneyline_metrics.get("roc_auc")
 
     m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Today's Games", len(games_today))
+    m1.metric("Games", len(games_today))
     m2.metric("Games with Odds", games_with_odds)
-    m3.metric("ML Model AUC", f"{roc_auc:.4f}" if roc_auc is not None else "—", help="Moneyline XGBoost ROC-AUC on held-out test set.")
+    m3.metric(
+        "ML Model AUC",
+        f"{roc_auc:.4f}" if roc_auc is not None else "—",
+        help="Moneyline XGBoost ROC-AUC on held-out test set.",
+    )
     m4.metric("Model Accuracy", f"{accuracy:.1%}" if accuracy is not None else "—")
     m5.metric("Odds Source", "ESPN" if espn_odds else "Unavailable")
 
+    st.caption(
+        f"Schedule date: {selected_date.isoformat()} · "
+        f"{len(games_today)} games returned by MLB Stats API"
+    )
     st.markdown("---")
 
     if not games_today:
-        st.info("No MLB games scheduled today, or the MLB Stats API is unreachable.")
+        st.info("No MLB games scheduled for the selected date, or the MLB Stats API is unreachable.")
     else:
-        st.markdown("### 🎯 Today's Games & Betting Recommendations")
+        st.markdown("### 🎯 Games & Betting Recommendations")
         st.caption(
             "Contextual run projections include historical offense/defense, probable starters, bullpen workload proxy, "
             "park factor, weather, day/night context, and home field. "
@@ -381,6 +393,7 @@ def home_page() -> None:
             "Warmup": "⏳ Warmup",
             "Delayed": "⚠️ Delayed",
             "Postponed": "🚫 Postponed",
+            "Cancelled": "🚫 Cancelled",
         }
 
         for idx, game in enumerate(games_today):
@@ -393,11 +406,11 @@ def home_page() -> None:
             game_time = format_game_time_et(game.get("game_datetime", ""))
             away_retro = _MLB_TO_RETRO.get(away_full, away_full)
             home_retro = _MLB_TO_RETRO.get(home_full, home_full)
-            game_date = game_date_et(game.get("game_datetime", ""), today_et)
+            weather_date = game_date_et(game.get("game_datetime", ""), selected_date)
 
             away_pitcher_stats = cached_pitcher_stats(away_sp)
             home_pitcher_stats = cached_pitcher_stats(home_sp)
-            weather = cached_weather(venue, game_date) if venue else None
+            weather = cached_weather(venue, weather_date) if venue else None
             projection = project_contextual_game(
                 game=game,
                 hist_stnd=hist_stnd,
@@ -419,8 +432,8 @@ def home_page() -> None:
             home_prob = projection.home_win_probability
 
             with st.container(border=True):
-                hdr_c1, hdr_c2 = st.columns([3, 2])
-                with hdr_c1:
+                header_left, header_right = st.columns([3, 2])
+                with header_left:
                     st.markdown(f"#### {away_full} @ {home_full}{score_str}", unsafe_allow_html=True)
                     st.markdown(
                         f"<small>🏟️ {venue} &nbsp;·&nbsp; {status_labels.get(status, status)} "
@@ -428,7 +441,7 @@ def home_page() -> None:
                         f"<small>SP: <b>{away_sp}</b> (away) &nbsp;/&nbsp; <b>{home_sp}</b> (home)</small>",
                         unsafe_allow_html=True,
                     )
-                with hdr_c2:
+                with header_right:
                     st.markdown(_prob_bar_html(home_prob, home_full, away_full), unsafe_allow_html=True)
 
                 st.caption(_projection_summary(projection))
@@ -447,11 +460,11 @@ def home_page() -> None:
                 with col_ml:
                     st.markdown("##### 💵 Moneyline")
                     if "ml" in recs:
-                        ml = recs["ml"]
-                        side = ml[ml["best"]]
-                        other = ml["away" if ml["best"] == "home" else "home"]
-                        exp = f"Est: {side['est_prob']:.0%} · Impl: {side['impl']:.0%}"
-                        st.markdown(_rec_card_html("ML", side, exp), unsafe_allow_html=True)
+                        market = recs["ml"]
+                        side = market[market["best"]]
+                        other = market["away" if market["best"] == "home" else "home"]
+                        explanation = f"Est: {side['est_prob']:.0%} · Impl: {side['impl']:.0%}"
+                        st.markdown(_rec_card_html("ML", side, explanation), unsafe_allow_html=True)
                         st.caption(f"Other side: {_short(other['team'])} {other['odds_str']} (edge {other['edge'] * 100:+.1f}%)")
                     else:
                         st.caption("— odds unavailable —")
@@ -459,11 +472,11 @@ def home_page() -> None:
                 with col_rl:
                     st.markdown("##### 📏 Run Line (±1.5)")
                     if "rl" in recs:
-                        rl = recs["rl"]
-                        side = rl[rl["best"]]
-                        other = rl["away" if rl["best"] == "home" else "home"]
-                        exp = f"Est cover: {side['est_prob']:.0%} · Impl: {side['impl']:.0%}"
-                        st.markdown(_rec_card_html("RL", side, exp), unsafe_allow_html=True)
+                        market = recs["rl"]
+                        side = market[market["best"]]
+                        other = market["away" if market["best"] == "home" else "home"]
+                        explanation = f"Est cover: {side['est_prob']:.0%} · Impl: {side['impl']:.0%}"
+                        st.markdown(_rec_card_html("RL", side, explanation), unsafe_allow_html=True)
                         st.caption(f"Other side: {other['pick']} {other['odds_str']} (edge {other['edge'] * 100:+.1f}%)")
                     else:
                         st.caption("— odds unavailable —")
@@ -471,11 +484,11 @@ def home_page() -> None:
                 with col_ou:
                     st.markdown("##### 📊 Over/Under")
                     if "ou" in recs:
-                        ou = recs["ou"]
-                        side = ou[ou["best"]]
-                        other = ou["under" if ou["best"] == "over" else "over"]
-                        exp = f"Model total: {ou['exp_total']:.1f} · Posted: {ou['posted']} · Impl: {side['impl']:.0%}"
-                        st.markdown(_rec_card_html("OU", side, exp), unsafe_allow_html=True)
+                        market = recs["ou"]
+                        side = market[market["best"]]
+                        other = market["under" if market["best"] == "over" else "over"]
+                        explanation = f"Model total: {market['exp_total']:.1f} · Posted: {market['posted']} · Impl: {side['impl']:.0%}"
+                        st.markdown(_rec_card_html("OU", side, explanation), unsafe_allow_html=True)
                         st.caption(f"Other side: {other['pick']} {other['odds_str']} (edge {other['edge'] * 100:+.1f}%)")
                     else:
                         st.caption("— odds unavailable —")
@@ -496,9 +509,9 @@ def home_page() -> None:
         ("ℹ️", "About", "Methodology, data sources & tech stack", "pages/7_Info.py"),
     ]
     for row_tiles in (tiles[:3], tiles[3:]):
-        cols = st.columns(3)
-        for col, (icon, title, description, path) in zip(cols, row_tiles):
-            with col:
+        columns = st.columns(3)
+        for column, (icon, title, description, path) in zip(columns, row_tiles):
+            with column:
                 with st.container(border=True):
                     st.markdown(f'<div style="text-align:center;font-size:1.8rem;padding-top:4px">{icon}</div>', unsafe_allow_html=True)
                     st.page_link(path, label=f"**{title}**")
