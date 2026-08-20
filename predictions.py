@@ -91,7 +91,11 @@ def is_matching_odds_game(game: dict, odds_game: dict) -> bool:
 def cached_todays_schedule(game_date_iso: str) -> list[dict]:
     """Load the MLB schedule for an explicit ET calendar date."""
     game_date = datetime.date.fromisoformat(game_date_iso)
-    return _fetch_todays_schedule(game_date)
+
+    try:
+        return _fetch_todays_schedule(game_date)
+    except TypeError:
+        return _fetch_todays_schedule()
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
