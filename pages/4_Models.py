@@ -9,6 +9,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+
 from page_utils import (
     READABLE_COLS,
     _load_precomputed,
@@ -122,7 +123,37 @@ tab_feat, tab_models, tab_eval, tab_savant = st.tabs(
 # ── Betting Features ──────────────────────────────────────────────────────────
 with tab_feat:
     st.subheader("Engineered Betting Features")
-    st.markdown("Feature matrix built from season-level stats — designed as inputs for ML models.")
+    st.markdown(
+        "Feature matrix built from season-level stats — designed as inputs for ML models."
+    )
+
+    # Historical standings come from the precomputed artifact. Add live
+    # standings so the current season is available without rebuilding it.
+    all_standings = _pre["standings"].copy()
+
+    live_standings = season_standings(
+        min_year=MODERN_START,
+        max_year=datetime.date.today().year,
+    )
+
+    precomputed_years = set(
+        pd.to_numeric(
+            all_standings["season"],
+            errors="coerce",
+        )
+        .dropna()
+        .astype(int)
+    )
+
+    live_standings = live_standings[
+        ~live_standings["season"].isin(precomputed_years)
+    ].copy()
+
+    all_standings = pd.concat(
+        [all_standings, live_standings],
+        ignore_index=True,
+        sort=False,
+    )
 
     all_standings = _pre["standings"].copy()
     all_standings["season"] = pd.to_numeric(
@@ -166,7 +197,7 @@ with tab_feat:
 
     if not available_feature_years:
         st.error(
-            "No overlapping seasons exist between standings data and game-level Retrosheet data."
+            "No overlapping seasons exist between standings data and game-level data."
         )
         st.stop()
 
