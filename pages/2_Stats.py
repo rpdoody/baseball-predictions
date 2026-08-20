@@ -3,6 +3,7 @@
 import datetime
 import sys
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -24,34 +25,50 @@ from retrosheet import (
     season_team_pitching,
 )
 
-_CUR_YEAR = datetime.date.today().year
+
+ET = ZoneInfo("America/New_York")
+_CUR_YEAR = datetime.datetime.now(ET).year
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=1800)
 def _live_batting_leaders(year: int) -> pd.DataFrame:
     """Live current-year batting leaders with a low PA floor (no 300-PA qualifier)."""
     return season_batting_leaders(year, year, min_pa=1)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=1800)
 def _live_pitching_leaders(year: int) -> pd.DataFrame:
     """Live current-year pitching leaders with a low IP floor."""
     return season_pitching_leaders(year, year, min_ip=1)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=1800)
 def _live_standings(year: int) -> pd.DataFrame:
     return season_standings(year, year)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=1800)
 def _live_team_batting(year: int) -> pd.DataFrame:
     return season_team_batting(year, year)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=1800)
 def _live_team_pitching(year: int) -> pd.DataFrame:
     return season_team_pitching(year, year)
+
+
+def _ensure_current_year(
+    frame: pd.DataFrame,
+    year: int,
+    max_year_selected: int,
+    live_loader,
+) -> pd.DataFrame:
+    """Append live current-year rows when the precomputed parquet lacks them."""
+    if max_year_selected < year:
+        return frame
+    if year in frame["season"].values:
+        return frame
+    return pd.concat([frame, live_loader(year)], ignore_index=True)
 
 
 def get_dataframe_height(df, row_height=35, header_height=38, padding=2, max_height=600):
@@ -94,16 +111,12 @@ pleaders = _pre["pitching_leaders"][
 ].copy()
 
 # Merge in live current-year data when the precomputed parquets don't include it.
-if max_year >= _CUR_YEAR and _CUR_YEAR not in standings["season"].values:
-    standings = pd.concat([standings, _live_standings(_CUR_YEAR)], ignore_index=True)
-if max_year >= _CUR_YEAR and _CUR_YEAR not in tbat["season"].values:
-    tbat = pd.concat([tbat, _live_team_batting(_CUR_YEAR)], ignore_index=True)
-if max_year >= _CUR_YEAR and _CUR_YEAR not in tpitch["season"].values:
-    tpitch = pd.concat([tpitch, _live_team_pitching(_CUR_YEAR)], ignore_index=True)
-if max_year >= _CUR_YEAR and _CUR_YEAR not in bleaders["season"].values:
-    bleaders = pd.concat([bleaders, _live_batting_leaders(_CUR_YEAR)], ignore_index=True)
-if max_year >= _CUR_YEAR and _CUR_YEAR not in pleaders["season"].values:
-    pleaders = pd.concat([pleaders, _live_pitching_leaders(_CUR_YEAR)], ignore_index=True)
+standings = _ensure_current_year(standings, _CUR_YEAR, max_year, _live_standings)
+tbat = _ensure_current_year(tbat, _CUR_YEAR, max_year, _live_team_batting)
+tpitch = _ensure_current_year(tpitch, _CUR_YEAR, max_year, _live_team_pitching)
+bleaders = _ensure_current_year(bleaders, _CUR_YEAR, max_year, _live_batting_leaders)
+pleaders = _ensure_current_year(pleaders, _CUR_YEAR, max_year, _live_pitching_leaders)
+
 
 tab_stnd, tab_tbat, tab_tpitch, tab_bleaders, tab_pleaders = st.tabs(
     [
@@ -114,6 +127,7 @@ tab_stnd, tab_tbat, tab_tpitch, tab_bleaders, tab_pleaders = st.tabs(
         "Pitching Leaders",
     ]
 )
+
 
 # ── Standings ─────────────────────────────────────────────────────────────────
 with tab_stnd:
@@ -152,6 +166,7 @@ with tab_stnd:
         .rename(columns=READABLE_COLS),
         width="stretch",
         hide_index=True,
+        height=get_dataframe_height(df_yr),
     )
 
     c1, c2 = st.columns(2)
@@ -202,6 +217,7 @@ with tab_stnd:
         )
         st.plotly_chart(fig3, width="stretch")
 
+
 # ── Team Batting ──────────────────────────────────────────────────────────────
 with tab_tbat:
     st.subheader("Team Batting")
@@ -239,6 +255,7 @@ with tab_tbat:
         .rename(columns=READABLE_COLS),
         width="stretch",
         hide_index=True,
+        height=get_dataframe_height(df_bat),
     )
 
     c1, c2 = st.columns(2)
@@ -273,6 +290,7 @@ with tab_tbat:
     )
     fig3.update_traces(textposition="top center")
     st.plotly_chart(fig3, width="stretch")
+
 
 # ── Team Pitching ─────────────────────────────────────────────────────────────
 with tab_tpitch:
@@ -313,11 +331,13 @@ with tab_tpitch:
         ].rename(columns=READABLE_COLS),
         width="stretch",
         hide_index=True,
+        height=get_dataframe_height(df_pt),
     )
 
     c1, c2 = st.columns(2)
     with c1:
-        bar_df = df_pt.nsmallest(15, "ERA") if asc else df_pt.nlargest(15, pitch_metric)
+        # Fixed: rank the top-15 by the currently selected metric, not always ERA.
+        bar_df = df_pt.nsmallest(15, pitch_metric) if asc else df_pt.nlargest(15, pitch_metric)
         fig = px.bar(
             bar_df.sort_values(pitch_metric, ascending=not asc),
             x=pitch_metric,
@@ -356,6 +376,7 @@ with tab_tpitch:
     fig3.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
     st.plotly_chart(fig3, width="stretch")
 
+
 # ── Batting Leaders ───────────────────────────────────────────────────────────
 with tab_bleaders:
     st.subheader("Individual Batting Leaders")
@@ -369,7 +390,7 @@ with tab_bleaders:
 
     df_bl = (
         bleaders[bleaders["season"] == bl_year]
-        .sort_values(bl_metric, ascending=(bl_metric == "K"))
+        .sort_values(bl_metric, ascending=False)
         .head(bl_top)
         .reset_index(drop=True)
     )
@@ -397,6 +418,7 @@ with tab_bleaders:
         .rename(columns=READABLE_COLS),
         width="stretch",
         hide_index=True,
+        height=get_dataframe_height(df_bl),
     )
 
     c1, c2 = st.columns(2)
@@ -424,6 +446,7 @@ with tab_bleaders:
             title=f"BA vs SLG (size=PA) — {bl_year}",
         )
         st.plotly_chart(fig2, width="stretch")
+
 
 # ── Pitching Leaders ──────────────────────────────────────────────────────────
 with tab_pleaders:
@@ -506,6 +529,7 @@ with tab_pleaders:
         .rename(columns=READABLE_COLS),
         width="stretch",
         hide_index=True,
+        height=get_dataframe_height(df_pl),
     )
 
     c1, c2 = st.columns(2)
@@ -533,5 +557,3 @@ with tab_pleaders:
             title=f"ERA vs WHIP (size=IP) — {pl_year}",
         )
         st.plotly_chart(fig2, width="stretch")
-
-add_betting_oracle_footer()
