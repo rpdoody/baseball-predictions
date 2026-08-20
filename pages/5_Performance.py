@@ -423,14 +423,22 @@ with tab_bankroll:
                 )
                 st.plotly_chart(_sim_fig, width="stretch")
 
+                _sim_df["running_peak"] = _sim_df["bankroll"].cummax()
+                _sim_df["drawdown"] = (
+                    (_sim_df["bankroll"] - _sim_df["running_peak"])
+                    / _sim_df["running_peak"].clip(lower=1)
+                )
+
                 _final_br = _sim_df["bankroll"].iloc[-1]
                 _total_pnl = _final_br - _sim_start
-                _peak_br = _sim_df["bankroll"].max()
-                _drawdown = (_peak_br - _sim_df["bankroll"].min()) / max(_peak_br, 1)
+                _peak_br = _sim_df["running_peak"].max()
+                _max_drawdown = abs(_sim_df["drawdown"].min())
 
                 _sc1, _sc2, _sc3 = st.columns(3)
-                _sc1.metric("Final bankroll", f"${_final_br:,.0f}", delta=f"${_total_pnl:+,.0f}")
+                _sc1.metric(
+                    "Final bankroll",
+                    f"${_final_br:,.0f}",
+                    delta=f"${_total_pnl:+,.0f}",
+                )
                 _sc2.metric("Peak bankroll", f"${_peak_br:,.0f}")
-                _sc3.metric("Max drawdown", f"{_drawdown:.1%}")
-
-add_betting_oracle_footer()
+                _sc3.metric("Max drawdown", f"{_max_drawdown:.1%}")
