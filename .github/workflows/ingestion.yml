@@ -82,7 +82,6 @@ jobs:
       - name: Train models (season-aware)
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-          THERUNDOWN_API_KEY: ${{ secrets.THERUNDOWN_API_KEY }}
         run: |
           python - <<'PYTHON'
           from datetime import datetime
@@ -101,7 +100,6 @@ jobs:
       - name: Run daily picks pipeline (season-aware)
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-          THERUNDOWN_API_KEY: ${{ secrets.THERUNDOWN_API_KEY }}
         run: |
           python - <<'PYTHON'
           from datetime import datetime
