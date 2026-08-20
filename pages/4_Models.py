@@ -21,7 +21,9 @@ from src.evaluation.calibration import calibration_plot_data
 
 min_year, max_year = render_sidebar()
 
-_pre = _load_precomputed()_GAMEINFO_MAX_YEAR = int(_pre["gameinfo"]["season"].max())
+_pre = _load_precomputed()
+
+_GAMEINFO_MAX_YEAR = int(_pre["gameinfo"]["season"].max())
 features_df = _pre["model_features"][
     _pre["model_features"]["season"].between(min_year, max_year)
 ].copy()
