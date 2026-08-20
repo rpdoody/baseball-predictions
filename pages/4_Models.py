@@ -1,3 +1,4 @@
+import datetime
 import sys
 from pathlib import Path
 
@@ -8,6 +9,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+
 from page_utils import (
     READABLE_COLS,
     _load_precomputed,
@@ -15,14 +17,27 @@ from page_utils import (
     init_session_state,
     render_sidebar,
 )
-from retrosheet import load_gameinfo
+from retrosheet import MODERN_START, load_gameinfo, season_standings
 from src.evaluation.calibration import calibration_plot_data
 
 
 min_year, max_year = render_sidebar()
 
 _pre = _load_precomputed()
-_GAMEINFO_MAX_YEAR = int(_pre["gameinfo"]["season"].max())
+
+_pre_gameinfo_max_year = int(_pre["gameinfo"]["season"].max())
+
+_live_gameinfo = load_gameinfo(
+    min_year=MODERN_START,
+    max_year=datetime.date.today().year,
+)
+
+_GAMEINFO_MAX_YEAR = max(
+    _pre_gameinfo_max_year,
+    int(_live_gameinfo["season"].max())
+    if not _live_gameinfo.empty
+    else _pre_gameinfo_max_year,
+)
 
 features_df = _pre["model_features"][
     _pre["model_features"]["season"].between(min_year, max_year)
@@ -108,9 +123,38 @@ tab_feat, tab_models, tab_eval, tab_savant = st.tabs(
 # ── Betting Features ──────────────────────────────────────────────────────────
 with tab_feat:
     st.subheader("Engineered Betting Features")
-    st.markdown("Feature matrix built from season-level stats — designed as inputs for ML models.")
+    st.markdown(
+        "Feature matrix built from season-level stats — designed as inputs for ML models."
+    )
 
-    all_standings = _pre["standings"]
+    # Historical standings come from the precomputed artifact. Add live
+    # standings so the current season is available without rebuilding it.
+    all_standings = _pre["standings"].copy()
+
+    live_standings = season_standings(
+        min_year=MODERN_START,
+        max_year=datetime.date.today().year,
+    )
+
+    precomputed_years = set(
+        pd.to_numeric(
+            all_standings["season"],
+            errors="coerce",
+        )
+        .dropna()
+        .astype(int)
+    )
+
+    live_standings = live_standings[
+        ~live_standings["season"].isin(precomputed_years)
+    ].copy()
+
+    all_standings = pd.concat(
+        [all_standings, live_standings],
+        ignore_index=True,
+        sort=False,
+    )
+
     available_feature_years = sorted(
         [
             int(year)
@@ -122,7 +166,7 @@ with tab_feat:
 
     if not available_feature_years:
         st.error(
-            "No overlapping seasons exist between standings data and game-level Retrosheet data."
+            "No overlapping seasons exist between standings data and game-level data."
         )
         st.stop()
 
@@ -133,7 +177,7 @@ with tab_feat:
     )
     st.caption(
         f"Game-level feature data is available through {_GAMEINFO_MAX_YEAR}. "
-        "Live current-season game features will be added after the MLB ingestion pipeline is built."
+        "Live current-season game data is included when available."
     )
 
     with st.spinner("Building feature matrix…"):
