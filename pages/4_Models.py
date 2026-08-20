@@ -1,3 +1,4 @@
+import datetime
 import sys
 from pathlib import Path
 
@@ -15,14 +16,27 @@ from page_utils import (
     init_session_state,
     render_sidebar,
 )
-from retrosheet import load_gameinfo
+from retrosheet import MODERN_START, load_gameinfo, season_standings
 from src.evaluation.calibration import calibration_plot_data
 
 
 min_year, max_year = render_sidebar()
 
 _pre = _load_precomputed()
-_GAMEINFO_MAX_YEAR = int(_pre["gameinfo"]["season"].max())
+
+_pre_gameinfo_max_year = int(_pre["gameinfo"]["season"].max())
+
+_live_gameinfo = load_gameinfo(
+    min_year=MODERN_START,
+    max_year=datetime.date.today().year,
+)
+
+_GAMEINFO_MAX_YEAR = max(
+    _pre_gameinfo_max_year,
+    int(_live_gameinfo["season"].max())
+    if not _live_gameinfo.empty
+    else _pre_gameinfo_max_year,
+)
 
 features_df = _pre["model_features"][
     _pre["model_features"]["season"].between(min_year, max_year)
@@ -110,7 +124,37 @@ with tab_feat:
     st.subheader("Engineered Betting Features")
     st.markdown("Feature matrix built from season-level stats — designed as inputs for ML models.")
 
-    all_standings = _pre["standings"]
+    all_standings = _pre["standings"].copy()
+    all_standings["season"] = pd.to_numeric(
+        all_standings["season"],
+        errors="coerce",
+    )
+
+    live_standings = season_standings(
+        min_year=MODERN_START,
+        max_year=datetime.date.today().year,
+    )
+    live_standings["season"] = pd.to_numeric(
+        live_standings["season"],
+        errors="coerce",
+    )
+
+    precomputed_years = set(
+        all_standings["season"]
+        .dropna()
+        .astype(int)
+    )
+
+    live_standings = live_standings[
+        ~live_standings["season"].isin(precomputed_years)
+    ].copy()
+
+    all_standings = pd.concat(
+        [all_standings, live_standings],
+        ignore_index=True,
+        sort=False,
+    )
+
     available_feature_years = sorted(
         [
             int(year)
@@ -133,7 +177,7 @@ with tab_feat:
     )
     st.caption(
         f"Game-level feature data is available through {_GAMEINFO_MAX_YEAR}. "
-        "Live current-season game features will be added after the MLB ingestion pipeline is built."
+        "Live current-season game data is included when available."
     )
 
     with st.spinner("Building feature matrix…"):
@@ -142,7 +186,7 @@ with tab_feat:
     if gi.empty:
         st.info("No games in selected season.")
     else:
-        ts_yr = all_standings[all_standings["season"] == feat_season].set_index("team")
+        ts_yr = all_standings[all_standings["season"].eq(int(feat_season))].set_index("team")
         feat_df = _build_feature_matrix(gi, ts_yr)
 
         if feat_df.empty:
