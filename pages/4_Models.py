@@ -138,12 +138,27 @@ with tab_feat:
     st.subheader("Engineered Betting Features")
     st.markdown("Feature matrix built from season-level stats — designed as inputs for ML models.")
 
-    all_standings = _pre["standings"]
-    feat_season = st.selectbox(
-        "Season",
-        sorted(all_standings["season"].unique().tolist(), reverse=True),
-        key="feat_season",
-    )
+   all_standings = _pre["standings"]
+
+available_feature_years = sorted(
+    [
+        int(year)
+        for year in all_standings["season"].dropna().unique()
+        if int(year) <= _GAMEINFO_MAX_YEAR
+    ],
+    reverse=True,
+)
+
+feat_season = st.selectbox(
+    "Season",
+    available_feature_years,
+    key="feat_season",
+)
+
+st.caption(
+    f"Game-level feature data is available through {_GAMEINFO_MAX_YEAR}. "
+    "Live current-season game features will be added after the MLB ingestion pipeline is built."
+)
 
     with st.spinner("Building feature matrix…"):
         gi = load_gameinfo(min_year=feat_season, max_year=feat_season)
