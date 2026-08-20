@@ -133,7 +133,7 @@ with tab_history:
 
             st.divider()
 
-            _cum_df = _filtered.sort_values("date").copy()
+            _cum_df = _filtered.sort_values(["model", "date"]).copy()
             _cum_df["cumulative_units"] = _cum_df.groupby("model")["profit_units"].cumsum()
             if not _cum_df.empty:
                 _pnl_fig = px.line(
@@ -401,12 +401,11 @@ with tab_bankroll:
             else:
                 _sim_df["pnl_$"] = _sim_df["profit_units"] * _sim_unit
                 _sim_df["bankroll"] = _sim_start + _sim_df["pnl_$"].cumsum()
-                _sim_df["date_str"] = _sim_df["date"].dt.strftime("%Y-%m-%d")
 
                 _sim_fig = go.Figure()
                 _sim_fig.add_trace(
                     go.Scatter(
-                        x=_sim_df["date_str"],
+                        x=_sim_df["date"],
                         y=_sim_df["bankroll"],
                         mode="lines",
                         name="Bankroll",
