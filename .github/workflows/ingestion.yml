@@ -103,6 +103,7 @@ jobs:
         run: |
           python - <<'PYTHON'
           from datetime import datetime
+          import os
           import sys
           from src.ingestion.season import in_season
 
@@ -110,12 +111,19 @@ jobs:
               print('Outside baseball season; skipping picks pipeline.')
               sys.exit(0)
 
+          if not os.environ.get("ODDS_API_KEY"):
+              print("Skipping daily picks: ODDS_API_KEY is not configured.")
+              sys.exit(0)
+
           from src.picks.daily_pipeline import run_daily_pipeline
           try:
               run_daily_pipeline()
           except Exception as exc:
               from src.picks.daily_pipeline import write_pipeline_status
-              write_pipeline_status('pipeline_failed', notes=f'{type(exc).__name__}: {exc}')
+              write_pipeline_status(
+                  "pipeline_failed",
+                  notes=f"{type(exc).__name__}: {exc}",
+              )
               raise
           PYTHON
 
