@@ -17,6 +17,7 @@ from page_utils import (
 )
 from retrosheet import TEAM_NAMES, head_to_head, rolling_team_form
 
+
 min_year, max_year = render_sidebar()
 
 _pre = _load_precomputed()
@@ -53,12 +54,30 @@ def _code_to_name(c: str) -> str:
     return TEAM_NAMES.get(str(c).upper(), c)
 
 
+@st.cache_data(show_spinner=False)
+def _cached_head_to_head(team_a: str, team_b: str, start_year: int, end_year: int):
+    """Cache head-to-head lookups so toggling between matchups avoids recompute."""
+    return head_to_head(team_a, team_b, start_year, end_year)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_rolling_form(team: str, window: int, start_year: int, end_year: int):
+    """Cache rolling-form computation so slider/team changes reuse prior results."""
+    return rolling_team_form(team, window, start_year, end_year)
+
+
 teams = sorted(
     set(_gi["visteam"].dropna().map(_code_to_name))
     | set(_gi["hometeam"].dropna().map(_code_to_name))
 )
 
+if not teams:
+    st.info("No games found for the selected year range. Adjust the sidebar filter.")
+    st.stop()
+
+
 tab_h2h, tab_form = st.tabs(["Head-to-Head", "Rolling Form"])
+
 
 # ── Head-to-Head ──────────────────────────────────────────────────────────────
 with tab_h2h:
@@ -72,7 +91,7 @@ with tab_h2h:
         st.warning("Select two different teams.")
     else:
         with st.spinner("Loading matchup data…"):
-            h2h = head_to_head(team_a, team_b, min_year, max_year)
+            h2h = _cached_head_to_head(team_a, team_b, min_year, max_year)
 
         if h2h.empty:
             st.info("No matchups found for the selected teams and year range.")
@@ -137,13 +156,18 @@ with tab_h2h:
             st.plotly_chart(fig2, width="stretch")
 
             with st.expander("Raw game log"):
-                st.dataframe(
+                log_df = (
                     h2h[["date", "visteam", "hometeam", "vruns", "hruns", "a_win"]]
                     .assign(date=lambda d: d["date"].dt.date)
-                    .rename(columns={**READABLE_COLS, "a_win": f"{team_a} Win"}),
+                    .rename(columns={**READABLE_COLS, "a_win": f"{team_a} Win"})
+                )
+                st.dataframe(
+                    log_df,
                     width="stretch",
                     hide_index=True,
+                    height=get_dataframe_height(log_df),
                 )
+
 
 # ── Rolling Form ──────────────────────────────────────────────────────────────
 with tab_form:
@@ -153,7 +177,7 @@ with tab_form:
     form_window = st.slider("Rolling window (games)", 5, 30, 10, key="form_window")
 
     with st.spinner(f"Computing {form_window}-game rolling form for {form_team}…"):
-        form_df = rolling_team_form(form_team, form_window, min_year, max_year)
+        form_df = _cached_rolling_form(form_team, form_window, min_year, max_year)
 
     if form_df.empty:
         st.info("No data found.")
@@ -161,50 +185,64 @@ with tab_form:
         rs_col = f"roll_RS_{form_window}"
         ra_col = f"roll_RA_{form_window}"
         rw_col = f"roll_W_{form_window}"
+        required_cols = {rs_col, ra_col, rw_col, "roll_RD"}
+        missing_cols = required_cols - set(form_df.columns)
 
-        fig = go.Figure()
-        fig.add_trace(
-            go.Scatter(
-                x=form_df["date"], y=form_df[rs_col], name="Avg RS", line=dict(color="green")
+        if missing_cols:
+            st.warning(
+                f"Rolling window of {form_window} games produced incomplete data "
+                f"(missing: {', '.join(sorted(missing_cols))}). Try a smaller window."
             )
-        )
-        fig.add_trace(
-            go.Scatter(x=form_df["date"], y=form_df[ra_col], name="Avg RA", line=dict(color="red"))
-        )
-        fig.update_layout(
-            title=f"{form_team} — {form_window}-game rolling runs scored/allowed",
-            xaxis_title="Date",
-            yaxis_title="Runs (rolling avg)",
-        )
-        st.plotly_chart(fig, width="stretch")
-
-        fig2 = px.line(
-            form_df,
-            x="date",
-            y=rw_col,
-            title=f"{form_team} — {form_window}-game rolling win rate",
-            labels={rw_col: "Win rate", "date": "Date"},
-            color_discrete_sequence=["#1f77b4"],
-        )
-        fig2.add_hline(y=0.5, line_dash="dot", line_color="gray")
-        st.plotly_chart(fig2, width="stretch")
-
-        st.markdown("#### Recent 20 games")
-        recent_20 = (
-            form_df.tail(20)[["date", "RS", "RA", "W", rs_col, ra_col, rw_col, "roll_RD"]]
-            .sort_values("date", ascending=False)
-            .reset_index(drop=True)
-            .assign(date=lambda d: d["date"].dt.date)
-            .rename(
-                columns={
-                    **READABLE_COLS,
-                    rs_col: f"Avg RS ({form_window}g)",
-                    ra_col: f"Avg RA ({form_window}g)",
-                    rw_col: f"Win Rate ({form_window}g)",
-                    "roll_RD": "Rolling Run Diff",
-                }
+        else:
+            fig = go.Figure()
+            fig.add_trace(
+                go.Scatter(
+                    x=form_df["date"], y=form_df[rs_col], name="Avg RS", line=dict(color="green")
+                )
             )
-        )
-        st.dataframe(recent_20, width="stretch", hide_index=True)
+            fig.add_trace(
+                go.Scatter(
+                    x=form_df["date"], y=form_df[ra_col], name="Avg RA", line=dict(color="red")
+                )
+            )
+            fig.update_layout(
+                title=f"{form_team} — {form_window}-game rolling runs scored/allowed",
+                xaxis_title="Date",
+                yaxis_title="Runs (rolling avg)",
+            )
+            st.plotly_chart(fig, width="stretch")
 
-add_betting_oracle_footer()
+            fig2 = px.line(
+                form_df,
+                x="date",
+                y=rw_col,
+                title=f"{form_team} — {form_window}-game rolling win rate",
+                labels={rw_col: "Win rate", "date": "Date"},
+                color_discrete_sequence=["#1f77b4"],
+            )
+            fig2.add_hline(y=0.5, line_dash="dot", line_color="gray")
+            st.plotly_chart(fig2, width="stretch")
+
+            st.markdown("#### Recent 20 games")
+            recent_20 = (
+                form_df.tail(20)[["date", "RS", "RA", "W", rs_col, ra_col, rw_col, "roll_RD"]]
+                .sort_values("date", ascending=False)
+                .reset_index(drop=True)
+                .assign(date=lambda d: d["date"].dt.date)
+                .rename(
+                    columns={
+                        **READABLE_COLS,
+                        rs_col: f"Avg RS ({form_window}g)",
+                        ra_col: f"Avg RA ({form_window}g)",
+                        rw_col: f"Win Rate ({form_window}g)",
+                        "roll_RD": "Rolling Run Diff",
+                    }
+                )
+            )
+            st.dataframe(
+                recent_20,
+                width="stretch",
+                hide_index=True,
+                height=get_dataframe_height(recent_20, max_height=760),
+            )
+
