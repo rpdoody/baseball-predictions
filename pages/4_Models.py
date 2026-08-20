@@ -20,6 +20,7 @@ from page_utils import (
 from retrosheet import load_gameinfo
 from src.evaluation.calibration import calibration_plot_data
 
+
 min_year, max_year = render_sidebar()
 
 _pre = _load_precomputed()
@@ -55,6 +56,75 @@ def get_dataframe_height(df, row_height=35, header_height=38, padding=2, max_hei
     return calculated_height
 
 
+def _build_feature_matrix(gi: pd.DataFrame, ts_yr: pd.DataFrame) -> pd.DataFrame:
+    """Vectorized construction of the season feature matrix.
+
+    Replaces a row-by-row .iterrows() + .loc lookup loop with two merges,
+    which scales far better across a full ~2,430-game season.
+    """
+    gi_valid = gi[
+        gi["hometeam"].isin(ts_yr.index) & gi["visteam"].isin(ts_yr.index)
+    ].copy()
+
+    if gi_valid.empty:
+        return pd.DataFrame()
+
+    home_stats = ts_yr[["WPct", "RS_per_G", "RA_per_G", "RD_per_G", "PythWPct"]].add_prefix("home_")
+    vis_stats = ts_yr[["WPct", "RS_per_G", "RA_per_G", "RD_per_G", "PythWPct"]].add_prefix("vis_")
+
+    merged = (
+        gi_valid.merge(home_stats, left_on="hometeam", right_index=True)
+        .merge(vis_stats, left_on="visteam", right_index=True)
+    )
+
+    merged["WPct_diff"] = merged["home_WPct"] - merged["vis_WPct"]
+    merged["PythWPct_diff"] = merged["home_PythWPct"] - merged["vis_PythWPct"]
+    merged["RS_advantage"] = merged["home_RS_per_G"] - merged["vis_RS_per_G"]
+    merged["RA_advantage"] = merged["vis_RA_per_G"] - merged["home_RA_per_G"]
+    merged["home_win"] = (merged["wteam"] == merged["hometeam"]).astype(int)
+
+    merged = merged.rename(
+        columns={
+            "visteam": "visitor",
+            "hometeam": "home_team",
+            "home_RS_per_G": "home_RS_G",
+            "home_RA_per_G": "home_RA_G",
+            "home_RD_per_G": "home_RD_G",
+            "vis_RS_per_G": "vis_RS_G",
+            "vis_RA_per_G": "vis_RA_G",
+            "vis_RD_per_G": "vis_RD_G",
+        }
+    )
+
+    keep_cols = [
+        "date",
+        "visitor",
+        "home_team",
+        "home_WPct",
+        "vis_WPct",
+        "home_RS_G",
+        "home_RA_G",
+        "vis_RS_G",
+        "vis_RA_G",
+        "home_RD_G",
+        "vis_RD_G",
+        "home_PythWPct",
+        "vis_PythWPct",
+        "WPct_diff",
+        "PythWPct_diff",
+        "RS_advantage",
+        "RA_advantage",
+        "daynight",
+        "attendance",
+        "temp",
+        "windspeed",
+        "home_win",
+        "total_runs",
+    ]
+    keep_cols = [c for c in keep_cols if c in merged.columns]
+    return merged[keep_cols].reset_index(drop=True)
+
+
 tab_feat, tab_models, tab_eval, tab_savant = st.tabs(
     [
         "Betting Features",
@@ -63,6 +133,7 @@ tab_feat, tab_models, tab_eval, tab_savant = st.tabs(
         "Savant Research",
     ]
 )
+
 
 # ── Betting Features ──────────────────────────────────────────────────────────
 with tab_feat:
@@ -83,167 +154,145 @@ with tab_feat:
         st.info("No games in selected season.")
     else:
         ts_yr = all_standings[all_standings["season"] == feat_season].set_index("team")
-        rows = []
-        for _, g in gi.iterrows():
-            vt, ht = g["visteam"], g["hometeam"]
-            if vt not in ts_yr.index or ht not in ts_yr.index:
-                continue
-            rows.append(
-                {
-                    "date": g["date"],
-                    "visitor": vt,
-                    "home_team": ht,
-                    "home_WPct": ts_yr.loc[ht, "WPct"],
-                    "vis_WPct": ts_yr.loc[vt, "WPct"],
-                    "home_RS_G": ts_yr.loc[ht, "RS_per_G"],
-                    "home_RA_G": ts_yr.loc[ht, "RA_per_G"],
-                    "vis_RS_G": ts_yr.loc[vt, "RS_per_G"],
-                    "vis_RA_G": ts_yr.loc[vt, "RA_per_G"],
-                    "home_RD_G": ts_yr.loc[ht, "RD_per_G"],
-                    "vis_RD_G": ts_yr.loc[vt, "RD_per_G"],
-                    "home_PythWPct": ts_yr.loc[ht, "PythWPct"],
-                    "vis_PythWPct": ts_yr.loc[vt, "PythWPct"],
-                    "WPct_diff": ts_yr.loc[ht, "WPct"] - ts_yr.loc[vt, "WPct"],
-                    "PythWPct_diff": ts_yr.loc[ht, "PythWPct"] - ts_yr.loc[vt, "PythWPct"],
-                    "RS_advantage": ts_yr.loc[ht, "RS_per_G"] - ts_yr.loc[vt, "RS_per_G"],
-                    "RA_advantage": ts_yr.loc[vt, "RA_per_G"] - ts_yr.loc[ht, "RA_per_G"],
-                    "daynight": g.get("daynight", ""),
-                    "attendance": g.get("attendance", None),
-                    "temp": g.get("temp", None),
-                    "windspeed": g.get("windspeed", None),
-                    "home_win": int(g["wteam"] == ht),
-                    "total_runs": g["total_runs"],
-                }
+        feat_df = _build_feature_matrix(gi, ts_yr)
+
+        if feat_df.empty:
+            st.info("No games with complete standings coverage for this season.")
+        else:
+            st.markdown(f"**{len(feat_df)} games** in {feat_season} with full feature coverage.")
+            display_feat = feat_df.head(50).copy()
+            display_feat["date"] = pd.to_datetime(display_feat["date"]).dt.date
+            feat_rename = {
+                **READABLE_COLS,
+                "visitor": "Visitor",
+                "home_team": "Home",
+                "home_WPct": "Home Win %",
+                "vis_WPct": "Visitor Win %",
+                "home_RS_G": "Home RS/G",
+                "home_RA_G": "Home RA/G",
+                "vis_RS_G": "Visitor RS/G",
+                "vis_RA_G": "Visitor RA/G",
+                "home_PythWPct": "Home Pyth W%",
+                "vis_PythWPct": "Visitor Pyth W%",
+                "WPct_diff": "Win % Diff",
+                "PythWPct_diff": "Pyth W% Diff",
+                "RS_advantage": "RS Advantage",
+                "RA_advantage": "RA Advantage",
+                "daynight": "Day/Night",
+                "attendance": "Attendance",
+                "temp": "Temperature",
+                "windspeed": "Wind Speed",
+                "home_win": "Home Win?",
+                "total_runs": "Total Runs",
+            }
+            st.dataframe(
+                display_feat.rename(columns=feat_rename),
+                width="stretch",
+                hide_index=True,
+                height=get_dataframe_height(display_feat),
             )
-        feat_df = pd.DataFrame(rows)
-        st.markdown(f"**{len(feat_df)} games** in {feat_season} with full feature coverage.")
-        display_feat = feat_df.head(50).copy()
-        display_feat["date"] = display_feat["date"].dt.date
-        feat_rename = {
-            **READABLE_COLS,
-            "visitor": "Visitor",
-            "home_team": "Home",
-            "home_WPct": "Home Win %",
-            "vis_WPct": "Visitor Win %",
-            "home_RS_G": "Home RS/G",
-            "home_RA_G": "Home RA/G",
-            "vis_RS_G": "Visitor RS/G",
-            "vis_RA_G": "Visitor RA/G",
-            "home_PythWPct": "Home Pyth W%",
-            "vis_PythWPct": "Visitor Pyth W%",
-            "WPct_diff": "Win % Diff",
-            "PythWPct_diff": "Pyth W% Diff",
-            "RS_advantage": "RS Advantage",
-            "RA_advantage": "RA Advantage",
-            "daynight": "Day/Night",
-            "attendance": "Attendance",
-            "temp": "Temperature",
-            "windspeed": "Wind Speed",
-            "home_win": "Home Win?",
-            "total_runs": "Total Runs",
-        }
-        st.dataframe(display_feat.rename(columns=feat_rename), width="stretch", hide_index=True)
 
-        num_feats = [
-            "home_WPct",
-            "vis_WPct",
-            "WPct_diff",
-            "PythWPct_diff",
-            "home_RS_G",
-            "home_RA_G",
-            "vis_RS_G",
-            "vis_RA_G",
-            "RS_advantage",
-            "RA_advantage",
-            "home_win",
-            "total_runs",
-        ]
-        readable_feats = [
-            "Home Win %",
-            "Visitor Win %",
-            "Win % Diff",
-            "Pyth W% Diff",
-            "Home RS/G",
-            "Home RA/G",
-            "Visitor RS/G",
-            "Visitor RA/G",
-            "RS Advantage",
-            "RA Advantage",
-            "Home Win?",
-            "Total Runs",
-        ]
-        corr = feat_df[num_feats].corr()
-        corr.index = readable_feats
-        corr.columns = readable_feats
-        fig = px.imshow(
-            corr,
-            title="Feature Correlation Heatmap",
-            color_continuous_scale="RdBu",
-            zmin=-1,
-            zmax=1,
-            text_auto=".2f",
-            aspect="auto",
-        )
-        st.plotly_chart(fig, width="stretch")
-
-        with st.expander("Feature data dictionary"):
-            dict_df = pd.DataFrame(
-                {
-                    "column": num_feats,
-                    "description": [
-                        "Home Win %, season standings",
-                        "Visitor Win %, season standings",
-                        "Home WPct minus visitor WPct",
-                        "Home Pythagorean WPct minus visitor",
-                        "Home runs scored per game",
-                        "Home runs allowed per game",
-                        "Visitor runs scored per game",
-                        "Visitor runs allowed per game",
-                        "Home RS/G minus visitor RS/G",
-                        "Visitor RA/G minus home RA/G",
-                        "Indicator (1=home team won)",
-                        "Total runs scored in game",
-                    ],
-                }
+            num_feats = [
+                "home_WPct",
+                "vis_WPct",
+                "WPct_diff",
+                "PythWPct_diff",
+                "home_RS_G",
+                "home_RA_G",
+                "vis_RS_G",
+                "vis_RA_G",
+                "RS_advantage",
+                "RA_advantage",
+                "home_win",
+                "total_runs",
+            ]
+            readable_feats = [
+                "Home Win %",
+                "Visitor Win %",
+                "Win % Diff",
+                "Pyth W% Diff",
+                "Home RS/G",
+                "Home RA/G",
+                "Visitor RS/G",
+                "Visitor RA/G",
+                "RS Advantage",
+                "RA Advantage",
+                "Home Win?",
+                "Total Runs",
+            ]
+            corr = feat_df[num_feats].corr()
+            corr.index = readable_feats
+            corr.columns = readable_feats
+            fig = px.imshow(
+                corr,
+                title="Feature Correlation Heatmap",
+                color_continuous_scale="RdBu",
+                zmin=-1,
+                zmax=1,
+                text_auto=".2f",
+                aspect="auto",
             )
-            st.dataframe(dict_df.rename(columns=READABLE_COLS), width="stretch", hide_index=True)
+            st.plotly_chart(fig, width="stretch")
 
-        st.markdown("#### Home Win % over time (all seasons in range)")
-        gi_all = load_gameinfo(min_year, max_year)
-        gi_all["home_win"] = (gi_all["wteam"] == gi_all["hometeam"]).astype(int)
-        hfa = gi_all.groupby("season")["home_win"].mean().reset_index()
-        hfa.columns = ["season", "home_win_pct"]
-        fig2 = px.line(
-            hfa,
-            x="season",
-            y="home_win_pct",
-            title="Home Field Advantage — Win % by season",
-            labels={"home_win_pct": "Home Win %", "season": "Season"},
-        )
-        fig2.add_hline(y=0.5, line_dash="dot", line_color="gray", annotation_text="50%")
-        st.plotly_chart(fig2, width="stretch")
+            with st.expander("Feature data dictionary"):
+                dict_df = pd.DataFrame(
+                    {
+                        "column": num_feats,
+                        "description": [
+                            "Home Win %, season standings",
+                            "Visitor Win %, season standings",
+                            "Home WPct minus visitor WPct",
+                            "Home Pythagorean WPct minus visitor",
+                            "Home runs scored per game",
+                            "Home runs allowed per game",
+                            "Visitor runs scored per game",
+                            "Visitor runs allowed per game",
+                            "Home RS/G minus visitor RS/G",
+                            "Visitor RA/G minus home RA/G",
+                            "Indicator (1=home team won)",
+                            "Total runs scored in game",
+                        ],
+                    }
+                )
+                st.dataframe(dict_df.rename(columns=READABLE_COLS), width="stretch", hide_index=True)
 
-        if gi_all["temp"].notna().sum() > 100:
-            temp_df = gi_all.dropna(subset=["temp", "total_runs"])
-            temp_df = temp_df[temp_df["temp"] > 0]
-            fig3 = px.scatter(
-                temp_df.sample(min(5000, len(temp_df)), random_state=42),
-                x="temp",
-                y="total_runs",
-                trendline="lowess",
-                title="Temperature vs Total Runs (sample)",
-                labels={"temp": "Temp (°F)", "total_runs": "Total Runs"},
-                opacity=0.4,
+            st.markdown("#### Home Win % over time (all seasons in range)")
+            gi_all = load_gameinfo(min_year, max_year)
+            gi_all["home_win"] = (gi_all["wteam"] == gi_all["hometeam"]).astype(int)
+            hfa = gi_all.groupby("season")["home_win"].mean().reset_index()
+            hfa.columns = ["season", "home_win_pct"]
+            fig2 = px.line(
+                hfa,
+                x="season",
+                y="home_win_pct",
+                title="Home Field Advantage — Win % by season",
+                labels={"home_win_pct": "Home Win %", "season": "Season"},
             )
-            st.plotly_chart(fig3, width="stretch")
+            fig2.add_hline(y=0.5, line_dash="dot", line_color="gray", annotation_text="50%")
+            st.plotly_chart(fig2, width="stretch")
 
-        with st.expander("Download feature CSV"):
-            st.download_button(
-                label="Download features.csv",
-                data=feat_df.to_csv(index=False),
-                file_name=f"features_{feat_season}.csv",
-                mime="text/csv",
-            )
+            if gi_all["temp"].notna().sum() > 100:
+                temp_df = gi_all.dropna(subset=["temp", "total_runs"])
+                temp_df = temp_df[temp_df["temp"] > 0]
+                fig3 = px.scatter(
+                    temp_df.sample(min(5000, len(temp_df)), random_state=42),
+                    x="temp",
+                    y="total_runs",
+                    trendline="lowess",
+                    title="Temperature vs Total Runs (sample)",
+                    labels={"temp": "Temp (°F)", "total_runs": "Total Runs"},
+                    opacity=0.4,
+                )
+                st.plotly_chart(fig3, width="stretch")
+
+            with st.expander("Download feature CSV"):
+                st.download_button(
+                    label="Download features.csv",
+                    data=feat_df.to_csv(index=False),
+                    file_name=f"features_{feat_season}.csv",
+                    mime="text/csv",
+                )
+
 
 # ── ML Models ─────────────────────────────────────────────────────────────────
 with tab_models:
@@ -381,7 +430,12 @@ with tab_models:
         )
         n_show = st.slider("Games to display", 25, 200, 50, key="bt_n_show")
         bt_df = results[bt_model]["test_df"].tail(n_show).copy()
-        bt_df["date"] = pd.to_datetime(bt_df["date"]).dt.date
+
+        try:
+            bt_df["date"] = pd.to_datetime(bt_df["date"]).dt.date
+        except (ValueError, TypeError):
+            pass
+
         if bt_model == "moneyline" and "pred_win" in bt_df.columns:
             bt_df["pred_win"] = bt_df["pred_win"].map({1: "Home", 0: "Away"})
         if bt_model == "spread" and "pred_cover" in bt_df.columns:
@@ -428,10 +482,12 @@ with tab_models:
                 "correct": "Correct?",
             }
         existing = [c for c in display_cols if c in bt_df.columns]
+        display_bt = bt_df[existing].reset_index(drop=True).rename(columns=display_cols)
         st.dataframe(
-            bt_df[existing].reset_index(drop=True).rename(columns=display_cols),
+            display_bt,
             width="stretch",
             hide_index=True,
+            height=get_dataframe_height(display_bt),
         )
 
         with st.expander("Download backtest CSVs"):
@@ -447,6 +503,7 @@ with tab_models:
                     file_name=f"backtest_{label}.csv",
                     mime="text/csv",
                 )
+
 
 # ── Model Evaluation ──────────────────────────────────────────────────────────
 with tab_eval:
@@ -481,6 +538,7 @@ with tab_eval:
             ),
             hide_index=True,
             width="stretch",
+            height=get_dataframe_height(lb_df),
         )
 
         st.markdown("### Calibration Charts")
@@ -501,6 +559,7 @@ with tab_eval:
         st.info(
             "No evaluation data yet. Run `scripts/run_evaluation.py` or `scripts/train_models.py`."
         )
+
 
 # ── Savant Research ───────────────────────────────────────────────────────────
 with tab_savant:
@@ -524,14 +583,14 @@ with tab_savant:
         )
     else:
         BASELINE_AUC = {"moneyline": 0.6253, "spread": 0.6304, "totals": 0.6157}
-        n_valid = len(mc_trials) if mc_trials is not None else "—"
+        n_valid = len(mc_trials) if mc_trials is not None else None
         top_cutoff = mc_trials["mean_auc"].quantile(0.90) if mc_trials is not None else None
 
         col_m, col_s, col_t, col_v = st.columns(4)
         col_m.metric("Baseline Moneyline AUC", f"{BASELINE_AUC['moneyline']:.4f}")
         col_s.metric("Baseline Spread AUC", f"{BASELINE_AUC['spread']:.4f}")
         col_t.metric("Baseline Totals AUC", f"{BASELINE_AUC['totals']:.4f}")
-        col_v.metric("Valid Trials", f"{n_valid:,}" if isinstance(n_valid, int) else n_valid)
+        col_v.metric("Valid Trials", f"{n_valid:,}" if n_valid is not None else "—")
 
         if savant_metrics is not None and not savant_metrics.empty:
             st.markdown("---")
@@ -576,6 +635,14 @@ with tab_savant:
                     line_color="gray",
                     annotation_text=f"{target_name} baseline",
                     annotation_position="right",
+                )
+            if top_cutoff is not None:
+                fig_dist.add_hline(
+                    y=top_cutoff,
+                    line_dash="dash",
+                    line_color="#7c3aed",
+                    annotation_text="Top 10% cutoff",
+                    annotation_position="left",
                 )
             st.plotly_chart(fig_dist, width="stretch")
 
@@ -632,6 +699,5 @@ with tab_savant:
                 ),
                 hide_index=True,
                 width="stretch",
+                height=get_dataframe_height(display_rank),
             )
-
-add_betting_oracle_footer()
