@@ -521,8 +521,6 @@ def home_page() -> None:
                     st.page_link(path, label=f"**{title}**")
                     st.caption(description)
 
-    add_betting_oracle_footer()
-
 
 pg = st.navigation(
     {
@@ -536,6 +534,7 @@ pg = st.navigation(
             st.Page("pages/6_Pick_6.py", title="Pick 6", icon="🎯"),
             st.Page("pages/7_Info.py", title="About", icon="ℹ️"),
         ]
-    }
+    },
+    position="top",
 )
 pg.run()
