@@ -17,17 +17,14 @@ from page_utils import (
     READABLE_COLS,
     ROOT,
     _fetch_espn_odds,
-    _fetch_game_umpires,
     _fetch_pitcher_stats,
     _fetch_pitcher_throw_hand,
-    _fetch_retrosheet_game_umpires,
     _fetch_team_il_players,
     _fetch_team_rest_days,
     _fetch_team_standings,
     _fetch_todays_schedule,
     _load_game_context_cache,
     _load_latest_odds,
-    _lookup_ump_retro_id,
     add_betting_oracle_footer,
     init_session_state,
     render_sidebar,
@@ -112,11 +109,6 @@ def cached_pitcher_stats(pitcher_name: str):
 @st.cache_data(ttl=1800, show_spinner=False)
 def cached_pitcher_hand(pitcher_name: str):
     return _fetch_pitcher_throw_hand(pitcher_name)
-
-
-@st.cache_data(ttl=600, show_spinner=False)
-def cached_game_umpires(game_id):
-    return _fetch_game_umpires(game_id)
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -291,45 +283,6 @@ if st.session_state["schedule_selected_game"] is not None:
         home_last_name = home_sp.split()[-1] if home_sp != "TBD" else "TBD"
         st.caption(f"Away SP: **{away_last_name} ({_away_sp_hand}HP)** → Home batters: {home_bat_adv}")
         st.caption(f"Home SP: **{home_last_name} ({_home_sp_hand}HP)** → Away batters: {away_bat_adv}")
-
-    with st.expander("⚖️ Umpire Profile", expanded=True):
-        _ump_stats = _ctx.get("umpire_stats", {})
-        _game_pk = g.get("game_id")
-        _game_date = g.get("game_date") or game_date_from_datetime(gtime_raw)
-        _umps = cached_game_umpires(_game_pk) if _game_pk else {}
-        if (not _umps or not _umps.get("home_plate")) and _game_date:
-            _retro_umps = _fetch_retrosheet_game_umpires(home_retro, away_retro, _game_date)
-            if _retro_umps:
-                _umps = {
-                    "home_plate": _umps.get("home_plate") or _retro_umps.get("home_plate", ""),
-                    "first": _umps.get("first") or _retro_umps.get("first", ""),
-                    "second": _umps.get("second") or _retro_umps.get("second", ""),
-                    "third": _umps.get("third") or _retro_umps.get("third", ""),
-                }
-
-        plate_name = _umps.get("home_plate", "")
-        plate_retro = _lookup_ump_retro_id(plate_name, _ump_stats)
-        plate_data = _ump_stats.get(plate_retro, {}) if plate_retro else {}
-        uc1, uc2, uc3 = st.columns(3)
-        uc1.markdown(f"**🧑‍⚖️ Plate:** {plate_name or 'TBD'}")
-        uc2.caption(f"**1B:** {_umps.get('first', '') or 'TBD'}")
-        uc2.caption(f"**2B:** {_umps.get('second', '') or 'TBD'}")
-        uc3.caption(f"**3B:** {_umps.get('third', '') or 'TBD'}")
-
-        if plate_data:
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("📊 Avg Runs/G", f"{plate_data['runs_avg']:.2f}")
-            m2.metric("🎮 Career Games", f"{plate_data['games']:,}")
-            over_val = plate_data["over_mean"]
-            m3.metric("↕ vs League Avg", f"{over_val:+.2f}", delta="Over avg" if over_val > 0 else "Under avg", delta_color="normal")
-            trend_val = plate_data["trend"]
-            m4.metric("📈 Trend (20g)", f"{trend_val:+.2f}", delta="Rising" if trend_val > 0.2 else ("Falling" if trend_val < -0.2 else "Stable"), delta_color="normal")
-            tendency = "🔺 Higher-run environment" if plate_data["above_avg"] else "🔻 Lower-run environment"
-            st.caption(f"**Tendency:** {tendency} · Retrosheet ID: `{plate_retro}`")
-        elif plate_name:
-            st.caption(f"No Retrosheet match found for **{plate_name}**. Historical metrics unavailable.")
-        else:
-            st.caption("Umpire assignments not yet posted — typically available 1–2 hours before first pitch.")
 
     st.divider()
     gc_away, gc_home = st.columns(2)
