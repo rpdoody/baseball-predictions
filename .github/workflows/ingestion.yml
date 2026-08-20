@@ -2,9 +2,11 @@ name: Daily Ingestion
 
 on:
   schedule:
-    # run each day at 12:00 UTC (morning in US)
     - cron: '0 12 * * *'
   workflow_dispatch: {}
+
+permissions:
+  contents: write
 
 concurrency:
   group: daily-ingestion-${{ github.ref }}
