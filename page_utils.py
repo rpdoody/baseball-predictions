@@ -487,22 +487,30 @@ def _fetch_pitcher_stats(pitcher_name: str) -> dict:
 
 
 @st.cache_data(show_spinner=False, ttl=1800)
-def _fetch_espn_odds() -> list[dict]:
-    """Fetch current ESPN MLB odds for the Eastern-date slate."""
+def _fetch_espn_odds(
+    game_date: datetime.date | None = None,
+) -> list[dict]:
+    """Fetch ESPN MLB odds for an explicit Eastern-date slate.
+
+    Defaults to today's ET date when no date is supplied, preserving the
+    previous zero-argument call signature used elsewhere in the app.
+    """
     from concurrent.futures import ThreadPoolExecutor, as_completed
     import requests
 
-    today = datetime.datetime.now(ET).strftime("%Y%m%d")
+    target_date = game_date or datetime.datetime.now(ET).date()
+    date_str = target_date.strftime("%Y%m%d")
+
     try:
         response = requests.get(
             "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard"
-            f"?dates={today}&limit=30",
+            f"?dates={date_str}&limit=30",
             timeout=10,
         )
         response.raise_for_status()
         events = response.json().get("events", [])
     except Exception as exc:
-        print(f"ESPN odds scoreboard fetch failed: {exc}")
+        print(f"ESPN odds scoreboard fetch failed for {target_date}: {exc}")
         return []
 
     def fetch_one(event: dict) -> dict | None:
