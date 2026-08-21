@@ -155,7 +155,75 @@ def _fetch_todays_schedule(
         print(f"MLB schedule fetch failed for {game_date}: {exc}")
         return []
 
+@st.cache_data(show_spinner=False, ttl=300)
+def _fetch_confirmed_lineups(game_pk: int) -> dict:
+    """Fetch official MLB batting orders when both lineups are complete."""
+    empty = {"away": [], "home": [], "confirmed": False}
 
+    if not game_pk:
+        return empty
+
+    try:
+        data = statsapi.get(
+            "game",
+            {
+                "gamePk": int(game_pk),
+                "fields": (
+                    "liveData,boxscore,teams,players,battingOrder,"
+                    "person,fullName,position"
+                ),
+            },
+        )
+        teams = data.get("liveData", {}).get("boxscore", {}).get("teams", {})
+        lineups: dict[str, list[dict]] = {}
+
+        for side in ("away", "home"):
+            players = teams.get(side, {}).get("players", {})
+            batting_order: list[dict] = []
+
+            for player in players.values():
+                order_raw = str(player.get("battingOrder") or "").strip()
+
+                # MLB uses values such as "100", "200", ..., "900".
+                if not order_raw or order_raw == "000":
+                    continue
+
+                try:
+                    order = int(order_raw) // 100
+                except ValueError:
+                    continue
+
+                person = player.get("person", {})
+                position = player.get("position", {})
+                batting_order.append(
+                    {
+                        "order": order,
+                        "player": person.get("fullName", "Unknown"),
+                        "position": position.get("abbreviation", "—"),
+                    }
+                )
+
+            lineups[side] = sorted(batting_order, key=lambda row: row["order"])
+
+        # Require nine unique lineup spots per side. This avoids displaying
+        # incomplete projected/partial batting orders as confirmed.
+        expected_slots = set(range(1, 10))
+        is_confirmed = (
+            expected_slots.issubset({row["order"] for row in lineups["away"]})
+            and expected_slots.issubset({row["order"] for row in lineups["home"]})
+        )
+
+        if not is_confirmed:
+            return empty
+
+        return {
+            "away": lineups["away"],
+            "home": lineups["home"],
+            "confirmed": True,
+        }
+    except Exception:
+        return empty
+    
 @st.cache_data(show_spinner=False, ttl=86400)
 def _load_latest_odds() -> pd.DataFrame:
     """Return odds from the latest morning-pipeline CSV without a live API call."""
