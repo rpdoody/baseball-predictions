@@ -25,7 +25,7 @@ from page_utils import (
     _fetch_todays_schedule,
     _load_game_context_cache,
     _load_latest_odds,
-    add_betting_oracle_footer,
+    _fetch_confirmed_lineups,
     init_session_state,
     render_sidebar,
 )
@@ -236,6 +236,48 @@ if st.session_state["schedule_selected_game"] is not None:
             elif pitcher != "TBD":
                 st.caption("Stats not yet available for this season.")
 
+    st.divider()
+    st.markdown("### 📋 Confirmed Lineups")
+
+    _game_pk = g.get("game_id") or g.get("game_pk")
+    _lineups = _fetch_confirmed_lineups(_game_pk)
+
+    if not _lineups["confirmed"]:
+        st.caption(
+            "Official MLB.com lineups have not been confirmed yet. "
+            "Check back closer to first pitch."
+        )
+    else:
+        _lu1, _lu2 = st.columns(2)
+
+        with _lu1:
+            st.markdown(f"**{away_full} batting order**")
+            st.dataframe(
+                pd.DataFrame(_lineups["away"]).rename(
+                    columns={
+                        "order": "#",
+                        "player": "Player",
+                        "position": "Pos",
+                    }
+                ),
+                hide_index=True,
+                width="stretch",
+            )
+
+        with _lu2:
+            st.markdown(f"**{home_full} batting order**")
+            st.dataframe(
+                pd.DataFrame(_lineups["home"]).rename(
+                    columns={
+                        "order": "#",
+                        "player": "Player",
+                        "position": "Pos",
+                    }
+                ),
+                hide_index=True,
+                width="stretch",
+            )
+            
     st.divider()
     st.markdown("### 🔍 Game Context Factors")
     _ctx = _load_game_context_cache()
