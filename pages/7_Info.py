@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import streamlit as st
 
-from page_utils import add_betting_oracle_footer, render_sidebar
+from page_utils import render_sidebar
 
 render_sidebar(show_year_filter=False)
 
@@ -91,4 +91,4 @@ For ML-model-driven picks (XGBoost trained on 2020–2025 data), see the **Model
 | Language | Python 3.11+ |
 """)
 
-add_betting_oracle_footer()
+
