@@ -320,7 +320,7 @@ def home_page() -> None:
     with hdr_left:
         logo = ROOT / "data_files" / "IMG_0185.PNG"
         if logo.exists():
-            st.image(str(logo), width=110)
+            st.image(str(logo), width=180)
     with hdr_right:
         st.markdown(
             "<h1 style='margin-bottom:0;color:#002D72'>RP Rocket Report</h1>"
