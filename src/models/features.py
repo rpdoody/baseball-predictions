@@ -695,8 +695,8 @@ if __name__ == "__main__":
 
     warnings.filterwarnings("ignore")
 
-    print("Building feature matrix (2020–2025)…")
-    df = build_model_features(2020, 2025)
+    print("Building feature matrix (2020–2026)…")
+    df = build_model_features(2020, 2026)
     print(f"Shape: {df.shape}")
     print(f"Columns: {list(df.columns)}")
     print("\nTarget rates:")

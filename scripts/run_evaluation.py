@@ -46,7 +46,7 @@ def _section(title: str) -> None:
 def main() -> None:
     # ── 1. Build feature matrix ───────────────────────────────────────────────
     _section("BUILDING FEATURE MATRIX")
-    features_df = build_model_features(2025, 2026)
+    features_df = build_model_features(2026, 2026)
     print(f"Feature matrix: {features_df.shape[0]:,} games × {features_df.shape[1]} columns")
 
     # ── 2. Train each model ───────────────────────────────────────────────────
