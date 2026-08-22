@@ -97,7 +97,13 @@ def get_dataframe_height(df, row_height=35, header_height=38, padding=2, max_hei
     return calculated_height
 
 
-min_year, max_year = render_sidebar()
+current_year = datetime.datetime.now(ET).year
+
+min_year, max_year = st.select_slider(
+    "Season range",
+    options=list(range(2020, current_year + 1)),
+    value=(2020, current_year),
+)
 
 _pre = _load_precomputed()
 standings = _pre["standings"][_pre["standings"]["season"].between(min_year, max_year)].copy()
