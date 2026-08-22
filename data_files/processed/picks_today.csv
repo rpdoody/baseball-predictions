@@ -1,1 +1,11 @@
 game_id,away_team,home_team,pick_type,pick_value,selection,predicted_prob,confidence_score,edge,expected_value,odds,line,book,quote_time,snapshot_id,model_version,game_date,source
+game_d8f926f9c9399ceecebee28f,Cleveland Guardians,Colorado Rockies,underdog,home,home,0.53,0.53,0.087,0.1973,126,,consensus,,,legacy_v1_quarantined,2026-08-22,morning
+game_2022dcf199e913c69165f1da,Tampa Bay Rays,Baltimore Orioles,underdog,home,home,0.51,0.51,0.043,0.0918,114,,consensus,,,legacy_v1_quarantined,2026-08-22,morning
+game_d45e91e4b431f9b75ed844b1,Atlanta Braves,Milwaukee Brewers,spread,Home -1.5,home,0.501,0.501,0.063,0.143,128,-1.5,consensus,,,legacy_v1_quarantined,2026-08-22,morning
+game_419dcf989a16cc6d7fe992e2,Washington Nationals,Miami Marlins,spread,Home -1.5,home,0.501,0.501,0.036,0.0778,115,-1.5,consensus,,,legacy_v1_quarantined,2026-08-22,morning
+game_4e7e3eed6893ede9e7cd04e2,St. Louis Cardinals,Philadelphia Phillies,spread,Home -1.5,home,0.501,0.501,0.081,0.1931,138,-1.5,consensus,,,legacy_v1_quarantined,2026-08-22,morning
+game_785bc917456be5a51ce520ae,Los Angeles Angels,Texas Rangers,spread,Home -1.5,home,0.501,0.501,0.057,0.1279,125,-1.5,consensus,,,legacy_v1_quarantined,2026-08-22,morning
+game_07de99486a95a7d7ee2f53fc,Cincinnati Reds,Arizona Diamondbacks,spread,Home -1.5,home,0.501,0.501,0.047,0.1029,120,-1.5,consensus,,,legacy_v1_quarantined,2026-08-22,morning
+game_91ddac0ec791b4df76edaa66,Detroit Tigers,Kansas City Royals,spread,Away +1.5,away,0.501,0.501,0.101,0.253,150,-1.5,consensus,,,legacy_v1_quarantined,2026-08-22,morning
+game_c6a192434c8feb1413553439,Pittsburgh Pirates,Los Angeles Dodgers,over_under,Over,over,0.612,0.612,0.083,0.1575,-112,7.5,consensus,,,legacy_v1_quarantined,2026-08-22,morning
+game_a9342b328908198bedb6f675,Chicago Cubs,Seattle Mariners,over_under,Over,over,0.545,0.545,0.033,0.0642,-105,7.5,consensus,,,legacy_v1_quarantined,2026-08-22,morning
