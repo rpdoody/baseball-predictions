@@ -1,13 +1,17 @@
 """Page: Matchup Analysis — Head-to-Head · Rolling Form"""
 
+import datetime
 import sys
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+
+ET = ZoneInfo("America/New_York")
 
 from page_utils import (
     READABLE_COLS,
@@ -20,12 +24,7 @@ from retrosheet import TEAM_NAMES, head_to_head, rolling_team_form
 
 current_year = datetime.datetime.now(ET).year
 
-min_year, max_year = st.select_slider(
-    "Season range",
-    options=list(range(2020, current_year + 1)),
-    value=(2020, current_year),
-    key="season_range",
-)
+min_year, max_year = render_sidebar()
 
 _pre = _load_precomputed()
 _gi = _pre["gameinfo"][_pre["gameinfo"]["season"].between(min_year, max_year)].copy()
