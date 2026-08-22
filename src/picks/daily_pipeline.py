@@ -92,6 +92,24 @@ def run_daily_pipeline(target_date: date | None = None) -> dict:
         )
         return {"underdog": [], "spread": [], "over_under": []}
     logger.info("Found %d games today", len(schedule))
+    artifacts = [
+            MODEL_DIR / "moneyline_xgb_v1.joblib",
+            MODEL_DIR / "spread_xgb_v1.joblib",
+            MODEL_DIR / TOTALS_MODEL_FILENAME,
+        ]
+    incompatible = {
+            artifact.name: quarantine_reason(artifact, 
+artifact.with_suffix(".manifest.json"))
+            for artifact in artifacts
+        }
+    incompatible = {name: reason for name, reason in incompatible.items() if reason}
+    if incompatible:
+            notes = "Validated model bundle unavailable: " + ", ".join(
+                f"{name}={reason}" for name, reason in incompatible.items()
+            )
+            logger.error(notes)
+            _write_pick_artifacts({}, target_date, status="model_incompatible", notes=notes)
+            return {"underdog": [], "spread": [], "over_under": []}
 
     # ---- 2. Odds ------------------------------------------------------------
     odds_raw = fetch_current_odds(target_date=target_date)
@@ -101,24 +119,6 @@ def run_daily_pipeline(target_date: date | None = None) -> dict:
     _save_consensus_snapshot(consensus, target_date, label="morning")
 
     game_odds = _pivot_odds(consensus)
-
-    artifacts = [
-        MODEL_DIR / "moneyline_xgb_v1.joblib",
-        MODEL_DIR / "spread_xgb_v1.joblib",
-        MODEL_DIR / TOTALS_MODEL_FILENAME,
-    ]
-    incompatible = {
-        artifact.name: quarantine_reason(artifact, artifact.with_suffix(".manifest.json"))
-        for artifact in artifacts
-    }
-    incompatible = {name: reason for name, reason in incompatible.items() if reason}
-    if incompatible:
-        notes = "Validated model bundle unavailable: " + ", ".join(
-            f"{name}={reason}" for name, reason in incompatible.items()
-        )
-        logger.error(notes)
-        _write_pick_artifacts({}, target_date, status="model_incompatible", notes=notes)
-        return {"underdog": [], "spread": [], "over_under": []}
 
     # ---- 3. Weather ---------------------------------------------------------
     weather = fetch_weather_for_games(schedule)
