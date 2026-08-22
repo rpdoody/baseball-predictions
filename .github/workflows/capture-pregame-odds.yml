@@ -49,4 +49,6 @@ jobs:
           fi
 
           git commit -m "Capture pregame odds snapshot"
-          git push
+
+          git pull --rebase origin main
+          git push origin HEAD:main
