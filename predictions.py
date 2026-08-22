@@ -13,9 +13,6 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
-import json
-import urllib.parse
-import urllib.request
 
 
 ROOT = Path(__file__).parent.resolve()
@@ -31,7 +28,6 @@ from page_utils import (
     _load_model_results,
     _load_precomputed,
     _prob_bar_html,
-    add_betting_oracle_footer,
     init_session_state,
 )
 from src.ingestion.weather import fetch_forecast
