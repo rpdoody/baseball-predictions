@@ -72,6 +72,7 @@ def _tier_from_badge(badge: str, confidence: float | None) -> str:
 
 def main() -> None:
     today = date.today()
+    target_date = str(today)
 
     # Baseball season: March–November
     month = today.month
@@ -105,6 +106,13 @@ def main() -> None:
 
     status = metadata.get("status", "ok")
     target_date = metadata.get("target_date", str(today))
+
+    try:
+        target_day = date.fromisoformat(target_date)
+    except (TypeError, ValueError):
+        target_day = today
+        target_date = str(today)
+
     if status in {"pipeline_failed", "no_games", "no_qualifying_picks"}:
         _write(
             [],
@@ -142,7 +150,7 @@ def main() -> None:
     # Filter to today
     if "game_date" in df.columns:
         df["game_date"] = pd.to_datetime(df["game_date"], errors="coerce").dt.date
-        df = df[df["game_date"] == today]
+        df = df[df["game_date"] == target_day]
 
     # Normalize the daily pipeline's legacy CSV fields at the contract boundary.
     if "pick_type" in df.columns and "bet_type" not in df.columns:
@@ -171,9 +179,13 @@ def main() -> None:
     for _, row in df.iterrows():
         home = str(row.get("home_team", ""))
         away = str(row.get("away_team", ""))
+
+        if not home or not away or home.lower() == "nan" or away.lower() == "nan":
+            continue
+
         game = f"{away} @ {home}"
         badge = str(row.get("badge", "LEAN"))
-        conf = _safe_float(row.get("prob_home_win", row.get("confidence")))
+        conf = _safe_float(row.get("confidence", row.get("prob_home_win")))
         edge = _safe_float(row.get("edge"))
         tier = _tier_from_badge(badge, conf)
 
@@ -189,7 +201,7 @@ def main() -> None:
         bet_type = bt_map.get(bet_type_raw, bet_type_raw)
 
         bet: dict = {
-            "game_date": str(today),
+            "game_date": target_date,
             "game_time": str(row.get("game_time", "")) or None,
             "game": game,
             "home_team": home,
