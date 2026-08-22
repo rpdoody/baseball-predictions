@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: capture-pregame-odds
+  cancel-in-progress: false
+  
 jobs:
   capture:
     runs-on: ubuntu-latest
