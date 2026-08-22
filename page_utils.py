@@ -12,7 +12,6 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
-
 ROOT = Path(__file__).parent.resolve()
 # ROOT first on sys.path so local src/ package is found before any PyPI 'src'
 sys.path.insert(0, str(ROOT))
@@ -22,7 +21,6 @@ import statsapi
 # Re-exported for pages and tests that import it from page_utils.
 from footer import add_betting_oracle_footer  # noqa: F401
 from retrosheet import TEAM_NAMES
-
 
 PROCESSED = ROOT / "data_files" / "processed"
 ET = ZoneInfo("America/New_York")
@@ -650,6 +648,7 @@ def _fetch_espn_odds(
     previous zero-argument call signature used elsewhere in the app.
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
+
     import requests
 
     target_date = game_date or datetime.datetime.now(ET).date()

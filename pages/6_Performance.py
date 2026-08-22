@@ -13,7 +13,6 @@ import streamlit as st
 from page_utils import (
     _american_to_implied_prob,
     _kelly_fraction,
-    add_betting_oracle_footer,
     init_session_state,
     render_sidebar,
 )

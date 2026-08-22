@@ -23,7 +23,6 @@ from src.ingestion.raw_store import RawStore
 
 from .config import config
 
-
 MLB_LINEUP_SOURCE = "mlb_stats_lineups"
 MLB_STARTER_SOURCE = "mlb_stats_starters"
 

@@ -1,9 +1,9 @@
 """Page: Today — today's schedule, pitcher matchups & odds detail."""
 
+import datetime
 import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
-import datetime
 
 import pandas as pd
 import plotly.express as px
@@ -16,6 +16,7 @@ from page_utils import (
     _MLB_TO_RETRO,
     READABLE_COLS,
     ROOT,
+    _fetch_confirmed_lineups,
     _fetch_espn_odds,
     _fetch_pitcher_stats,
     _fetch_pitcher_throw_hand,
@@ -25,13 +26,11 @@ from page_utils import (
     _fetch_todays_schedule,
     _load_game_context_cache,
     _load_latest_odds,
-    _fetch_confirmed_lineups,
     init_session_state,
     render_sidebar,
 )
 from retrosheet import head_to_head, load_gameinfo, rolling_team_form
 from src.ingestion.weather import fetch_forecast
-
 
 ET = ZoneInfo("America/New_York")
 

@@ -14,8 +14,6 @@ import streamlit as st
 from page_utils import (
     READABLE_COLS,
     _load_precomputed,
-    add_betting_oracle_footer,
-    render_sidebar,
 )
 from retrosheet import (
     season_batting_leaders,
@@ -24,7 +22,6 @@ from retrosheet import (
     season_team_batting,
     season_team_pitching,
 )
-
 
 ET = ZoneInfo("America/New_York")
 _CUR_YEAR = datetime.datetime.now(ET).year

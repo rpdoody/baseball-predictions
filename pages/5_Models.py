@@ -9,17 +9,14 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-
 from page_utils import (
     READABLE_COLS,
     _load_precomputed,
-    add_betting_oracle_footer,
     init_session_state,
     render_sidebar,
 )
 from retrosheet import MODERN_START, load_gameinfo, season_standings
 from src.evaluation.calibration import calibration_plot_data
-
 
 min_year, max_year = render_sidebar()
 

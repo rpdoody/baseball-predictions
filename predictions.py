@@ -11,9 +11,7 @@ import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-import pandas as pd
 import streamlit as st
-
 
 ROOT = Path(__file__).parent.resolve()
 sys.path.insert(0, str(ROOT))
@@ -32,7 +30,6 @@ from page_utils import (
 )
 from src.ingestion.weather import fetch_forecast
 from src.models.contextual_projection import project_contextual_game
-
 
 ET = ZoneInfo("America/New_York")
 

@@ -16,11 +16,8 @@ ET = ZoneInfo("America/New_York")
 from page_utils import (
     READABLE_COLS,
     _load_precomputed,
-    add_betting_oracle_footer,
-    render_sidebar,
 )
 from retrosheet import TEAM_NAMES, head_to_head, rolling_team_form
-
 
 current_year = datetime.datetime.now(ET).year
 

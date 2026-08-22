@@ -8,11 +8,8 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import statsapi
 
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-
-from retrosheet import TEAM_NAMES
 
 
 ET = ZoneInfo("America/New_York")
