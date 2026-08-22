@@ -113,7 +113,12 @@ def main() -> None:
         target_day = today
         target_date = str(today)
 
-    if status in {"pipeline_failed", "no_games", "no_qualifying_picks"}:
+    if status in {
+        "pipeline_failed",
+        "no_games",
+        "no_qualifying_picks",
+        "model_incompatible",
+    }:
         _write(
             [],
             metadata.get("notes", status),
