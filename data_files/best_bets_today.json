@@ -1,7 +1,7 @@
 {
   "meta": {
     "sport": "MLB",
-    "generated_at": "2026-08-22T16:42:12.959095+00:00",
+    "generated_at": "2026-08-22T17:26:14.133621+00:00",
     "model_version": "1.0.0",
     "season": "2026",
     "status": "ok",
@@ -15,7 +15,7 @@
   "bets": [
     {
       "game_date": "2026-08-22",
-      "game_time": null,
+      "game_time": "2026-08-23T00:10:00Z",
       "game": "Cleveland Guardians @ Colorado Rockies",
       "home_team": "Colorado Rockies",
       "away_team": "Cleveland Guardians",
@@ -30,7 +30,7 @@
     },
     {
       "game_date": "2026-08-22",
-      "game_time": null,
+      "game_time": "2026-08-22T23:05:00Z",
       "game": "Tampa Bay Rays @ Baltimore Orioles",
       "home_team": "Baltimore Orioles",
       "away_team": "Tampa Bay Rays",
@@ -45,7 +45,7 @@
     },
     {
       "game_date": "2026-08-22",
-      "game_time": null,
+      "game_time": "2026-08-22T18:10:00Z",
       "game": "Atlanta Braves @ Milwaukee Brewers",
       "home_team": "Milwaukee Brewers",
       "away_team": "Atlanta Braves",
@@ -60,7 +60,7 @@
     },
     {
       "game_date": "2026-08-22",
-      "game_time": null,
+      "game_time": "2026-08-22T20:10:00Z",
       "game": "Washington Nationals @ Miami Marlins",
       "home_team": "Miami Marlins",
       "away_team": "Washington Nationals",
@@ -75,7 +75,7 @@
     },
     {
       "game_date": "2026-08-22",
-      "game_time": null,
+      "game_time": "2026-08-22T22:05:00Z",
       "game": "St. Louis Cardinals @ Philadelphia Phillies",
       "home_team": "Philadelphia Phillies",
       "away_team": "St. Louis Cardinals",
@@ -90,7 +90,7 @@
     },
     {
       "game_date": "2026-08-22",
-      "game_time": null,
+      "game_time": "2026-08-22T23:05:00Z",
       "game": "Los Angeles Angels @ Texas Rangers",
       "home_team": "Texas Rangers",
       "away_team": "Los Angeles Angels",
@@ -105,7 +105,7 @@
     },
     {
       "game_date": "2026-08-22",
-      "game_time": null,
+      "game_time": "2026-08-23T00:10:00Z",
       "game": "Cincinnati Reds @ Arizona Diamondbacks",
       "home_team": "Arizona Diamondbacks",
       "away_team": "Cincinnati Reds",
@@ -120,7 +120,7 @@
     },
     {
       "game_date": "2026-08-22",
-      "game_time": null,
+      "game_time": "2026-08-22T23:15:00Z",
       "game": "Detroit Tigers @ Kansas City Royals",
       "home_team": "Kansas City Royals",
       "away_team": "Detroit Tigers",
@@ -135,7 +135,7 @@
     },
     {
       "game_date": "2026-08-22",
-      "game_time": null,
+      "game_time": "2026-08-22T23:15:00Z",
       "game": "Pittsburgh Pirates @ Los Angeles Dodgers",
       "home_team": "Los Angeles Dodgers",
       "away_team": "Pittsburgh Pirates",
@@ -150,7 +150,7 @@
     },
     {
       "game_date": "2026-08-22",
-      "game_time": null,
+      "game_time": "2026-08-22T23:15:00Z",
       "game": "Chicago Cubs @ Seattle Mariners",
       "home_team": "Seattle Mariners",
       "away_team": "Chicago Cubs",

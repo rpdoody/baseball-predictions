@@ -6,8 +6,15 @@ and writes data_files/best_bets_today.json in the unified Sports Picks Grid sche
 
 import json
 import os
+import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.ingestion.mlb_stats import fetch_schedule_for_date
 
 SPORT = "MLB"
 MODEL_VERSION = "1.0.0"
@@ -26,6 +33,7 @@ def _write(
 ) -> None:
     if status is None:
         status = "ok" if bets else "no_picks"
+
     payload: dict = {
         "meta": {
             "sport": SPORT,
@@ -40,14 +48,14 @@ def _write(
         },
         "bets": bets,
     }
+
     if notes:
         payload["meta"]["notes"] = notes
-    if status:
-        payload["meta"]["status"] = status
     if target_date:
         payload["meta"]["target_date"] = target_date
     if picks_count is not None:
         payload["meta"]["picks_count"] = picks_count
+
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
     print(f"[{SPORT}] Wrote {len(bets)} bets -> {OUT_PATH}")
@@ -63,20 +71,17 @@ def _safe_float(val) -> float | None:
 def _tier_from_badge(badge: str, confidence: float | None) -> str:
     if badge == "BET" and (confidence or 0) >= 0.60:
         return "Elite"
-    elif badge == "BET":
+    if badge == "BET":
         return "Strong"
-    elif badge == "LEAN":
+    if badge == "LEAN":
         return "Good"
     return "Standard"
 
 
 def main() -> None:
     today = date.today()
-    target_date = str(today)
 
-    # Baseball season: March–November
-    month = today.month
-    if not (3 <= month <= 11):
+    if not (3 <= today.month <= 11):
         _write([], "MLB off-season", status="off_season", target_date=str(today), picks_count=0)
         return
 
@@ -94,10 +99,10 @@ def main() -> None:
     if META_PATH.exists():
         try:
             metadata = json.loads(META_PATH.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as e:
+        except (OSError, json.JSONDecodeError) as exc:
             _write(
                 [],
-                f"Failed to read {META_PATH}: {e}",
+                f"Failed to read {META_PATH}: {exc}",
                 status="pipeline_failed",
                 target_date=str(today),
                 picks_count=0,
@@ -132,10 +137,10 @@ def main() -> None:
         import pandas as pd
 
         df = pd.read_csv(SRC_PATH)
-    except Exception as e:
+    except Exception as exc:
         _write(
             [],
-            f"Failed to read {SRC_PATH}: {e}",
+            f"Failed to read {SRC_PATH}: {exc}",
             status="pipeline_failed",
             target_date=target_date,
             picks_count=0,
@@ -152,21 +157,24 @@ def main() -> None:
         )
         return
 
-    # Filter to today
     if "game_date" in df.columns:
         df["game_date"] = pd.to_datetime(df["game_date"], errors="coerce").dt.date
         df = df[df["game_date"] == target_day]
 
-    # Normalize the daily pipeline's legacy CSV fields at the contract boundary.
     if "pick_type" in df.columns and "bet_type" not in df.columns:
-        type_map = {"underdog": "Moneyline", "spread": "Spread", "over_under": "Over/Under"}
+        type_map = {
+            "underdog": "Moneyline",
+            "spread": "Spread",
+            "over_under": "Over/Under",
+        }
         df["bet_type"] = df["pick_type"].map(type_map).fillna(df["pick_type"])
+
     if "pick_value" in df.columns and "pick" not in df.columns:
         df["pick"] = df["pick_value"]
+
     if "confidence_score" in df.columns and "confidence" not in df.columns:
         df["confidence"] = df["confidence_score"]
 
-    # Exclude PASS signals
     if "badge" in df.columns:
         df = df[df["badge"].isin(["BET", "LEAN"])]
 
@@ -180,6 +188,40 @@ def main() -> None:
         )
         return
 
+    if "game_id" not in df.columns:
+        _write(
+            [],
+            "Pick snapshot is missing game_id; cannot attach scheduled start times",
+            status="pipeline_failed",
+            target_date=target_date,
+            picks_count=0,
+        )
+        return
+
+    try:
+        schedule = fetch_schedule_for_date(target_day)
+        required_columns = {"game_id", "game_time"}
+        missing_columns = required_columns.difference(schedule.columns)
+        if missing_columns:
+            raise ValueError(f"Schedule is missing columns: {sorted(missing_columns)}")
+
+        schedule_times = (
+            schedule[["game_id", "game_time"]]
+            .drop_duplicates(subset=["game_id"])
+            .assign(game_id=lambda frame: frame["game_id"].astype(str))
+            .set_index("game_id")["game_time"]
+        )
+        df["game_time"] = df["game_id"].astype(str).map(schedule_times)
+
+        matched = int(df["game_time"].notna().sum())
+        print(f"[{SPORT}] Schedule times found: {matched}/{len(df)}")
+        if matched != len(df):
+            unmatched = df.loc[df["game_time"].isna(), "game_id"].astype(str).tolist()
+            print(f"[{SPORT}] Unmatched schedule IDs: {unmatched}")
+    except Exception as exc:
+        print(f"[{SPORT}] Could not load schedule times: {exc}")
+        df["game_time"] = None
+
     bets = []
     for _, row in df.iterrows():
         home = str(row.get("home_team", ""))
@@ -190,12 +232,12 @@ def main() -> None:
 
         game = f"{away} @ {home}"
         badge = str(row.get("badge", "LEAN"))
-        conf = _safe_float(row.get("confidence", row.get("prob_home_win")))
+        confidence = _safe_float(row.get("confidence", row.get("prob_home_win")))
         edge = _safe_float(row.get("edge"))
-        tier = _tier_from_badge(badge, conf)
+        tier = _tier_from_badge(badge, confidence)
 
         bet_type_raw = str(row.get("bet_type", "Moneyline"))
-        bt_map = {
+        bet_type_map = {
             "Moneyline": "Moneyline",
             "moneyline": "Moneyline",
             "Run Line": "Spread",
@@ -203,21 +245,24 @@ def main() -> None:
             "Over/Under": "Over/Under",
             "Total": "Over/Under",
         }
-        bet_type = bt_map.get(bet_type_raw, bet_type_raw)
+        bet_type = bet_type_map.get(bet_type_raw, bet_type_raw)
+
+        raw_game_time = row.get("game_time")
+        game_time = str(raw_game_time) if pd.notna(raw_game_time) else None
 
         bet: dict = {
             "game_date": target_date,
-            "game_time": str(row.get("game_time", "")) or None,
+            "game_time": game_time,
             "game": game,
             "home_team": home,
             "away_team": away,
             "bet_type": bet_type,
             "pick": str(row.get("pick", home)),
-            "confidence": conf,
+            "confidence": confidence,
             "edge": edge,
             "tier": tier,
             "odds": int(row["odds"])
-            if "odds" in row and _safe_float(row.get("odds")) is not None
+            if _safe_float(row.get("odds")) is not None
             else None,
             "line": _safe_float(row.get("line")),
             "notes": str(row.get("notes", "")) or None,
