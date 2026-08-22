@@ -225,3 +225,4 @@ __marimo__/
 
 baseball-predictions.code-workspace
 .commandcode/
+.streamlit/secrets.toml
