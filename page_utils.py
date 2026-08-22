@@ -4,6 +4,9 @@ Import from this module instead of duplicating code across pages.
 """
 
 import datetime
+import json
+import urllib.parse
+import urllib.request
 import math
 import sys
 from pathlib import Path
@@ -246,8 +249,6 @@ def _load_game_context_cache() -> dict:
     code_to_short = {code: short_name for code, short_name in TEAM_NAMES.items()}
     out: dict = {
         "park_factors": {},
-        "ump_park_avg": {},
-        "umpire_stats": {},
         "daynight": {},
         "bullpen_ip_pg": {},
         "platoon": {},
@@ -625,6 +626,105 @@ def _fetch_espn_odds(
                 result.append(item)
     return result
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _fetch_action_public_betting(
+    game_date: datetime.date | None = None,
+) -> list[dict]:
+    """
+    Retrieve MLB public betting splits from Action Network.
+
+    The data is provider-specific public betting data. Missing/locked fields
+    are returned as None rather than guessed.
+    """
+    target_date = game_date or datetime.datetime.now(ET).date()
+    params = {
+        "period": "game",
+        "date": target_date.strftime("%Y%m%d"),
+    }
+    url = (
+        "https://api.actionnetwork.com/web/v1/scoreboard/publicbetting/mlb?"
+        + urllib.parse.urlencode(params)
+    )
+
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0",
+            "Origin": "https://www.actionnetwork.com",
+            "Referer": "https://www.actionnetwork.com/mlb/public-betting",
+        },
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return []
+
+    games = payload.get("games", payload.get("events", []))
+    rows: list[dict] = []
+
+    def _num(value):
+        try:
+            return float(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def _market_side(market: dict, side: str) -> dict:
+        side_data = market.get(side, {}) if isinstance(market, dict) else {}
+        return {
+            "bets_pct": _num(
+                side_data.get("bets_percentage", side_data.get("bet_percentage"))
+            ),
+            "money_pct": _num(
+                side_data.get("money_percentage", side_data.get("money_percent"))
+            ),
+        }
+
+    for event in games:
+        teams = event.get("teams", [])
+        home = next(
+            (
+                team for team in teams
+                if str(team.get("side", "")).lower() == "home"
+            ),
+            {},
+        )
+        away = next(
+            (
+                team for team in teams
+                if str(team.get("side", "")).lower() == "away"
+            ),
+            {},
+        )
+
+        # Action response structures can vary; inspect raw output if this
+        # returns no usable markets for a date.
+        markets = event.get("markets", event.get("odds", {}))
+        moneyline = (
+            markets.get("moneyline")
+            or markets.get("money_line")
+            or event.get("moneyline")
+            or {}
+        )
+
+        home_splits = _market_side(moneyline, "home")
+        away_splits = _market_side(moneyline, "away")
+
+        rows.append(
+            {
+                "home_team": home.get("full_name") or home.get("name"),
+                "away_team": away.get("full_name") or away.get("name"),
+                "event_id": event.get("id"),
+                "home_ml_bets_pct": home_splits["bets_pct"],
+                "home_ml_money_pct": home_splits["money_pct"],
+                "away_ml_bets_pct": away_splits["bets_pct"],
+                "away_ml_money_pct": away_splits["money_pct"],
+            }
+        )
+
+    return rows
 
 @st.cache_data(show_spinner=False)
 def _load_precomputed() -> dict:
