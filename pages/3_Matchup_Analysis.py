@@ -24,7 +24,12 @@ from retrosheet import TEAM_NAMES, head_to_head, rolling_team_form
 
 current_year = datetime.datetime.now(ET).year
 
-min_year, max_year = render_sidebar()
+min_year, max_year = st.select_slider(
+    "Season range",
+    options=list(range(2020, current_year + 1)),
+    value=(2020, current_year),
+    key="season_range_on_page",
+)
 
 _pre = _load_precomputed()
 _gi = _pre["gameinfo"][_pre["gameinfo"]["season"].between(min_year, max_year)].copy()
