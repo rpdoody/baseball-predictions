@@ -56,8 +56,8 @@ def get_dataframe_height(df, row_height=35, header_height=38, padding=2, max_hei
 with tab_history:
     st.subheader("Pick History")
     st.markdown(
-        "Backtest history for all modeled picks. "
-        "Once the daily pipeline runs, live picks will appear here automatically."
+        "Settled modeled picks with recorded pregame market prices. "
+        "Pick History includes only games for which odds were saved before the game."
     )
 
     if _bt is None:
@@ -86,6 +86,15 @@ with tab_history:
         else:
             _hist_df["model"] = _hist_df["model"].str.title()
             _hist_df["date"] = pd.to_datetime(_hist_df["date"])
+            latest_pick_date = _hist_df["date"].max()
+            st.info(
+                f"Pick-history coverage currently runs through "
+                f"{latest_pick_date:%B %d, %Y}. "
+                "2026 game outcomes are available, but historical pregame odds "
+                "were not saved for those games, so they cannot be graded as "
+                "realistic betting picks.",
+                icon="ℹ️",
+            )
             _PICK_TYPE_LABELS = {"totals": "Totals", "over_under": "Over/Under"}
             _hist_df["pick_type"] = _hist_df["pick_type"].map(
                 lambda x: _PICK_TYPE_LABELS.get(x, x.title())
