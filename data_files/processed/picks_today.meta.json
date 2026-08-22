@@ -1,0 +1,8 @@
+{
+  "status": "model_incompatible",
+  "target_date": "2026-08-22",
+  "picks_count": 0,
+  "generated_at": "2026-08-22T15:28:14.466256+00:00",
+  "source_commit": "unknown",
+  "notes": "Validated model bundle unavailable: moneyline_xgb_v1.joblib=missing_manifest, spread_xgb_v1.joblib=missing_manifest, totals_xgb_v1.joblib=missing_manifest"
+}
