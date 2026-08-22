@@ -3,9 +3,10 @@ name: Capture pregame MLB odds
 on:
   workflow_dispatch:
   schedule:
-    # Every 30 minutes, April through October.
-    # GitHub Actions uses UTC.
-    - cron: "7,37 * * 4-10"
+    # 15 runs per Eastern game day, 11:07 AM–1:07 AM during EDT.
+    # GitHub Actions evaluates cron in UTC.
+    - cron: "7 15-23 * 4-10 *"
+    - cron: "7 0-5 * 4-10 *"
 
 permissions:
   contents: write
