@@ -123,7 +123,10 @@ def bullpen_run_multiplier(
     value = safe_float(ip_per_game, 3.1)
     multiplier = 1.0 + clamp((value - 3.1) * 0.025, -0.05, 0.05)
 
-    return multiplier, "Bullpen adjustment uses historical relief IP/G, not live reliever availability."
+    return (
+        multiplier,
+        "Bullpen adjustment uses historical relief IP/G, not live reliever availability.",
+    )
 
 
 def park_run_multiplier(home_retro: str, game_context: dict) -> tuple[float, str | None]:

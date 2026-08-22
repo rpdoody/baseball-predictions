@@ -34,9 +34,7 @@ _live_gameinfo = load_gameinfo(
 
 _GAMEINFO_MAX_YEAR = max(
     _pre_gameinfo_max_year,
-    int(_live_gameinfo["season"].max())
-    if not _live_gameinfo.empty
-    else _pre_gameinfo_max_year,
+    int(_live_gameinfo["season"].max()) if not _live_gameinfo.empty else _pre_gameinfo_max_year,
 )
 
 features_df = _pre["model_features"][
@@ -53,9 +51,7 @@ def get_dataframe_height(df, row_height=35, header_height=38, padding=2, max_hei
 
 def _build_feature_matrix(gi: pd.DataFrame, ts_yr: pd.DataFrame) -> pd.DataFrame:
     """Build season features with vectorized home/visitor standings joins."""
-    gi_valid = gi[
-        gi["hometeam"].isin(ts_yr.index) & gi["visteam"].isin(ts_yr.index)
-    ].copy()
+    gi_valid = gi[gi["hometeam"].isin(ts_yr.index) & gi["visteam"].isin(ts_yr.index)].copy()
     if gi_valid.empty:
         return pd.DataFrame()
 
@@ -63,9 +59,8 @@ def _build_feature_matrix(gi: pd.DataFrame, ts_yr: pd.DataFrame) -> pd.DataFrame
     home_stats = ts_yr[stat_cols].add_prefix("home_")
     vis_stats = ts_yr[stat_cols].add_prefix("vis_")
 
-    merged = (
-        gi_valid.merge(home_stats, left_on="hometeam", right_index=True)
-        .merge(vis_stats, left_on="visteam", right_index=True)
+    merged = gi_valid.merge(home_stats, left_on="hometeam", right_index=True).merge(
+        vis_stats, left_on="visteam", right_index=True
     )
 
     merged["WPct_diff"] = merged["home_WPct"] - merged["vis_WPct"]
@@ -123,9 +118,7 @@ tab_feat, tab_models, tab_eval, tab_savant = st.tabs(
 # ── Betting Features ──────────────────────────────────────────────────────────
 with tab_feat:
     st.subheader("Engineered Betting Features")
-    st.markdown(
-        "Feature matrix built from season-level stats — designed as inputs for ML models."
-    )
+    st.markdown("Feature matrix built from season-level stats — designed as inputs for ML models.")
 
     # Historical standings come from the precomputed artifact. Add live
     # standings so the current season is available without rebuilding it.
@@ -145,9 +138,7 @@ with tab_feat:
         .astype(int)
     )
 
-    live_standings = live_standings[
-        ~live_standings["season"].isin(precomputed_years)
-    ].copy()
+    live_standings = live_standings[~live_standings["season"].isin(precomputed_years)].copy()
 
     all_standings = pd.concat(
         [all_standings, live_standings],
@@ -170,15 +161,9 @@ with tab_feat:
         errors="coerce",
     )
 
-    precomputed_years = set(
-        all_standings["season"]
-        .dropna()
-        .astype(int)
-    )
+    precomputed_years = set(all_standings["season"].dropna().astype(int))
 
-    live_standings = live_standings[
-        ~live_standings["season"].isin(precomputed_years)
-    ].copy()
+    live_standings = live_standings[~live_standings["season"].isin(precomputed_years)].copy()
 
     all_standings = pd.concat(
         [all_standings, live_standings],
@@ -196,9 +181,7 @@ with tab_feat:
     )
 
     if not available_feature_years:
-        st.error(
-            "No overlapping seasons exist between standings data and game-level data."
-        )
+        st.error("No overlapping seasons exist between standings data and game-level data.")
         st.stop()
 
     feat_season = st.selectbox(
@@ -257,14 +240,32 @@ with tab_feat:
             )
 
             num_feats = [
-                "home_WPct", "vis_WPct", "WPct_diff", "PythWPct_diff",
-                "home_RS_G", "home_RA_G", "vis_RS_G", "vis_RA_G",
-                "RS_advantage", "RA_advantage", "home_win", "total_runs",
+                "home_WPct",
+                "vis_WPct",
+                "WPct_diff",
+                "PythWPct_diff",
+                "home_RS_G",
+                "home_RA_G",
+                "vis_RS_G",
+                "vis_RA_G",
+                "RS_advantage",
+                "RA_advantage",
+                "home_win",
+                "total_runs",
             ]
             readable_feats = [
-                "Home Win %", "Visitor Win %", "Win % Diff", "Pyth W% Diff",
-                "Home RS/G", "Home RA/G", "Visitor RS/G", "Visitor RA/G",
-                "RS Advantage", "RA Advantage", "Home Win?", "Total Runs",
+                "Home Win %",
+                "Visitor Win %",
+                "Win % Diff",
+                "Pyth W% Diff",
+                "Home RS/G",
+                "Home RA/G",
+                "Visitor RS/G",
+                "Visitor RA/G",
+                "RS Advantage",
+                "RA Advantage",
+                "Home Win?",
+                "Total Runs",
             ]
             corr = feat_df[num_feats].corr()
             corr.index = readable_feats
@@ -300,7 +301,9 @@ with tab_feat:
                         ],
                     }
                 )
-                st.dataframe(dict_df.rename(columns=READABLE_COLS), width="stretch", hide_index=True)
+                st.dataframe(
+                    dict_df.rename(columns=READABLE_COLS), width="stretch", hide_index=True
+                )
 
             st.markdown("#### Home Win % over time")
             gameinfo_range_max = min(max_year, _GAMEINFO_MAX_YEAR)
@@ -408,15 +411,24 @@ with tab_models:
 
         st.markdown("### Feature Importances")
         feature_labels = {
-            "WPct_diff": "Win % Diff", "PythWPct_diff": "Pythagorean W% Diff",
-            "sp_ERA_gap": "SP ERA Gap", "home_WPct": "Home Win %",
-            "away_WPct": "Away Win %", "home_PythWPct": "Home Pyth W%",
-            "away_PythWPct": "Away Pyth W%", "home_RS_G": "Home RS / G",
-            "home_RA_G": "Home RA / G", "away_RS_G": "Away RS / G",
-            "away_RA_G": "Away RA / G", "home_RD_G": "Home RD / G",
-            "away_RD_G": "Away RD / G", "ERA_diff": "ERA Diff",
-            "WHIP_diff": "WHIP Diff", "temp": "Temperature (°F)",
-            "windspeed": "Wind Speed", "is_day": "Day game?",
+            "WPct_diff": "Win % Diff",
+            "PythWPct_diff": "Pythagorean W% Diff",
+            "sp_ERA_gap": "SP ERA Gap",
+            "home_WPct": "Home Win %",
+            "away_WPct": "Away Win %",
+            "home_PythWPct": "Home Pyth W%",
+            "away_PythWPct": "Away Pyth W%",
+            "home_RS_G": "Home RS / G",
+            "home_RA_G": "Home RA / G",
+            "away_RS_G": "Away RS / G",
+            "away_RA_G": "Away RA / G",
+            "home_RD_G": "Home RD / G",
+            "away_RD_G": "Away RD / G",
+            "ERA_diff": "ERA Diff",
+            "WHIP_diff": "WHIP Diff",
+            "temp": "Temperature (°F)",
+            "windspeed": "Wind Speed",
+            "is_day": "Day game?",
             "exp_total": "Expected Total Runs",
         }
 
@@ -504,22 +516,38 @@ with tab_models:
 
         if bt_model == "moneyline":
             display_cols = {
-                "date": "Date", "hometeam": "Home", "visteam": "Away",
-                "hruns": "H Runs", "vruns": "V Runs", "home_win": "Actually Won?",
-                "pred_prob": "Pred. Prob", "pred_win": "Model Pick", "correct": "Correct?",
+                "date": "Date",
+                "hometeam": "Home",
+                "visteam": "Away",
+                "hruns": "H Runs",
+                "vruns": "V Runs",
+                "home_win": "Actually Won?",
+                "pred_prob": "Pred. Prob",
+                "pred_win": "Model Pick",
+                "correct": "Correct?",
             }
         elif bt_model == "spread":
             display_cols = {
-                "date": "Date", "hometeam": "Home", "visteam": "Away",
-                "home_margin": "Margin", "home_cover": "Actually Covered?",
-                "pred_prob": "P(cover −1.5)", "pred_cover": "Model Pick", "correct": "Correct?",
+                "date": "Date",
+                "hometeam": "Home",
+                "visteam": "Away",
+                "home_margin": "Margin",
+                "home_cover": "Actually Covered?",
+                "pred_prob": "P(cover −1.5)",
+                "pred_cover": "Model Pick",
+                "correct": "Correct?",
             }
         else:
             display_cols = {
-                "date": "Date", "hometeam": "Home", "visteam": "Away",
-                "total_runs": "Total Runs", "exp_total": "Exp Total",
-                "went_over": "Went Over?", "pred_prob_over": "P(over)",
-                "pick_side": "Pick", "correct": "Correct?",
+                "date": "Date",
+                "hometeam": "Home",
+                "visteam": "Away",
+                "total_runs": "Total Runs",
+                "exp_total": "Exp Total",
+                "went_over": "Went Over?",
+                "pred_prob_over": "P(over)",
+                "pick_side": "Pick",
+                "correct": "Correct?",
             }
 
         existing = [col for col in display_cols if col in bt_df.columns]
@@ -564,10 +592,17 @@ with tab_eval:
         st.dataframe(
             lb_df.rename(
                 columns={
-                    "model": "Model", "pick_type": "Pick Type", "period": "Period",
-                    "total_bets": "Bets", "wins": "Wins", "losses": "Losses",
-                    "pushes": "Pushes", "win_rate": "Win Rate", "total_units": "Units",
-                    "max_drawdown": "Max Drawdown", "roi": "ROI",
+                    "model": "Model",
+                    "pick_type": "Pick Type",
+                    "period": "Period",
+                    "total_bets": "Bets",
+                    "wins": "Wins",
+                    "losses": "Losses",
+                    "pushes": "Pushes",
+                    "win_rate": "Win Rate",
+                    "total_units": "Units",
+                    "max_drawdown": "Max Drawdown",
+                    "roi": "ROI",
                 }
             ),
             hide_index=True,
@@ -590,7 +625,9 @@ with tab_eval:
             fig.add_shape(type="line", x0=0, y0=0, x1=1, y1=1, line=dict(dash="dot", color="gray"))
             st.plotly_chart(fig, width="stretch")
     else:
-        st.info("No evaluation data yet. Run `scripts/run_evaluation.py` or `scripts/train_models.py`.")
+        st.info(
+            "No evaluation data yet. Run `scripts/run_evaluation.py` or `scripts/train_models.py`."
+        )
 
 
 # ── Savant Research ───────────────────────────────────────────────────────────
@@ -640,8 +677,12 @@ with tab_savant:
 
         if mc_trials is not None:
             st.markdown("---")
-            auc_plot_cols = [col for col in mc_trials.columns if col.endswith("_auc") and col != "mean_auc"]
-            auc_long = mc_trials[auc_plot_cols + ["mean_auc"]].melt(var_name="target", value_name="auc")
+            auc_plot_cols = [
+                col for col in mc_trials.columns if col.endswith("_auc") and col != "mean_auc"
+            ]
+            auc_long = mc_trials[auc_plot_cols + ["mean_auc"]].melt(
+                var_name="target", value_name="auc"
+            )
             auc_long["target"] = auc_long["target"].str.replace("_auc", "").str.capitalize()
             fig_dist = px.box(
                 auc_long[auc_long["target"] != "Mean"],
@@ -686,7 +727,10 @@ with tab_savant:
             y="feature",
             orientation="h",
             title="Batter Feature Selection Frequency",
-            labels={"appearance_pct": "Appearance Rate in Top Trials (%)", "feature": "Savant Column"},
+            labels={
+                "appearance_pct": "Appearance Rate in Top Trials (%)",
+                "feature": "Savant Column",
+            },
             color="appearance_pct",
             color_continuous_scale="Blues",
         )
@@ -700,7 +744,10 @@ with tab_savant:
             y="feature",
             orientation="h",
             title="Pitcher Feature Selection Frequency",
-            labels={"appearance_pct": "Appearance Rate in Top Trials (%)", "feature": "Savant Column"},
+            labels={
+                "appearance_pct": "Appearance Rate in Top Trials (%)",
+                "feature": "Savant Column",
+            },
             color="appearance_pct",
             color_continuous_scale="Reds",
         )
@@ -723,4 +770,3 @@ with tab_savant:
                 width="stretch",
                 height=get_dataframe_height(display_rank),
             )
-

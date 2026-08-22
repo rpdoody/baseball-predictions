@@ -90,5 +90,3 @@ For ML-model-driven picks (XGBoost trained on 2020–2025 data), see the **Model
 | Scheduling | APScheduler, GitHub Actions |
 | Language | Python 3.11+ |
 """)
-
-

@@ -432,10 +432,9 @@ with tab_bankroll:
                 st.plotly_chart(_sim_fig, width="stretch")
 
                 _sim_df["running_peak"] = _sim_df["bankroll"].cummax()
-                _sim_df["drawdown"] = (
-                    (_sim_df["bankroll"] - _sim_df["running_peak"])
-                    / _sim_df["running_peak"].clip(lower=1)
-                )
+                _sim_df["drawdown"] = (_sim_df["bankroll"] - _sim_df["running_peak"]) / _sim_df[
+                    "running_peak"
+                ].clip(lower=1)
 
                 _final_br = _sim_df["bankroll"].iloc[-1]
                 _total_pnl = _final_br - _sim_start

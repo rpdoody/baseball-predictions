@@ -78,11 +78,10 @@ def normalize_team_name(team_name: str | None) -> str:
 
 def is_matching_odds_game(game: dict, odds_game: dict) -> bool:
     """Require exact normalized home and away team matches."""
-    return (
-        normalize_team_name(game.get("home_name"))
-        == normalize_team_name(odds_game.get("home_team"))
-        and normalize_team_name(game.get("away_name"))
-        == normalize_team_name(odds_game.get("away_team"))
+    return normalize_team_name(game.get("home_name")) == normalize_team_name(
+        odds_game.get("home_team")
+    ) and normalize_team_name(game.get("away_name")) == normalize_team_name(
+        odds_game.get("away_team")
     )
 
 
@@ -191,7 +190,9 @@ def _build_game_recs(game: dict, espn_game: dict | None, projection) -> dict:
     spread_h = _parse_american(espn_game.get("spread_home"))
     spread_a = _parse_american(espn_game.get("spread_away"))
     if spread_h is not None and spread_a is not None:
-        home_favorite = ml_h < ml_a if ml_h is not None and ml_a is not None else spread_h > 0 and spread_a <= 0
+        home_favorite = (
+            ml_h < ml_a if ml_h is not None and ml_a is not None else spread_h > 0 and spread_a <= 0
+        )
 
         if home_favorite:
             home_rl, away_rl, _push_rl = dist.run_line_probabilities(-1.5)
@@ -356,7 +357,9 @@ def home_page() -> None:
     games_with_odds = sum(
         1 for game in games_today if any(is_matching_odds_game(game, odds) for odds in espn_odds)
     )
-    moneyline_metrics = model_results.get("moneyline", {}).get("metrics", {}) if model_results else {}
+    moneyline_metrics = (
+        model_results.get("moneyline", {}).get("metrics", {}) if model_results else {}
+    )
     accuracy = moneyline_metrics.get("accuracy")
     roc_auc = moneyline_metrics.get("roc_auc")
 
@@ -378,7 +381,9 @@ def home_page() -> None:
     st.markdown("---")
 
     if not games_today:
-        st.info("No MLB games scheduled for the selected date, or the MLB Stats API is unreachable.")
+        st.info(
+            "No MLB games scheduled for the selected date, or the MLB Stats API is unreachable."
+        )
     else:
         st.markdown("### 🎯 Games & Betting Recommendations")
         st.caption(
@@ -430,14 +435,18 @@ def home_page() -> None:
                 if game.get("away_score") is not None and game.get("home_score") is not None:
                     score_str = f" &nbsp;·&nbsp; **{game['away_score']}–{game['home_score']}**"
 
-            espn_game = next((odds for odds in espn_odds if is_matching_odds_game(game, odds)), None)
+            espn_game = next(
+                (odds for odds in espn_odds if is_matching_odds_game(game, odds)), None
+            )
             recs = _build_game_recs(game, espn_game, projection)
             home_prob = projection.home_win_probability
 
             with st.container(border=True):
                 header_left, header_right = st.columns([3, 2])
                 with header_left:
-                    st.markdown(f"#### {away_full} @ {home_full}{score_str}", unsafe_allow_html=True)
+                    st.markdown(
+                        f"#### {away_full} @ {home_full}{score_str}", unsafe_allow_html=True
+                    )
                     st.markdown(
                         f"<small>🏟️ {venue} &nbsp;·&nbsp; {status_labels.get(status, status)} "
                         f"&nbsp;·&nbsp; 🕐 {game_time}</small><br>"
@@ -445,7 +454,9 @@ def home_page() -> None:
                         unsafe_allow_html=True,
                     )
                 with header_right:
-                    st.markdown(_prob_bar_html(home_prob, home_full, away_full), unsafe_allow_html=True)
+                    st.markdown(
+                        _prob_bar_html(home_prob, home_full, away_full), unsafe_allow_html=True
+                    )
 
                 st.caption(_projection_summary(projection))
                 if projection.warnings:
@@ -468,7 +479,9 @@ def home_page() -> None:
                         other = market["away" if market["best"] == "home" else "home"]
                         explanation = f"Est: {side['est_prob']:.0%} · Impl: {side['impl']:.0%}"
                         st.markdown(_rec_card_html("ML", side, explanation), unsafe_allow_html=True)
-                        st.caption(f"Other side: {_short(other['team'])} {other['odds_str']} (edge {other['edge'] * 100:+.1f}%)")
+                        st.caption(
+                            f"Other side: {_short(other['team'])} {other['odds_str']} (edge {other['edge'] * 100:+.1f}%)"
+                        )
                     else:
                         st.caption("— odds unavailable —")
 
@@ -478,9 +491,13 @@ def home_page() -> None:
                         market = recs["rl"]
                         side = market[market["best"]]
                         other = market["away" if market["best"] == "home" else "home"]
-                        explanation = f"Est cover: {side['est_prob']:.0%} · Impl: {side['impl']:.0%}"
+                        explanation = (
+                            f"Est cover: {side['est_prob']:.0%} · Impl: {side['impl']:.0%}"
+                        )
                         st.markdown(_rec_card_html("RL", side, explanation), unsafe_allow_html=True)
-                        st.caption(f"Other side: {other['pick']} {other['odds_str']} (edge {other['edge'] * 100:+.1f}%)")
+                        st.caption(
+                            f"Other side: {other['pick']} {other['odds_str']} (edge {other['edge'] * 100:+.1f}%)"
+                        )
                     else:
                         st.caption("— odds unavailable —")
 
@@ -492,12 +509,16 @@ def home_page() -> None:
                         other = market["under" if market["best"] == "over" else "over"]
                         explanation = f"Model total: {market['exp_total']:.1f} · Posted: {market['posted']} · Impl: {side['impl']:.0%}"
                         st.markdown(_rec_card_html("OU", side, explanation), unsafe_allow_html=True)
-                        st.caption(f"Other side: {other['pick']} {other['odds_str']} (edge {other['edge'] * 100:+.1f}%)")
+                        st.caption(
+                            f"Other side: {other['pick']} {other['odds_str']} (edge {other['edge'] * 100:+.1f}%)"
+                        )
                     else:
                         st.caption("— odds unavailable —")
 
                 st.markdown("")
-                if st.button("🔍 View Full Game Details →", key=f"home_detail_{idx}", width="stretch"):
+                if st.button(
+                    "🔍 View Full Game Details →", key=f"home_detail_{idx}", width="stretch"
+                ):
                     st.session_state["schedule_selected_game"] = game
                     st.switch_page("pages/1_Today.py")
 
@@ -506,9 +527,19 @@ def home_page() -> None:
     tiles = [
         ("📅", "Today", "Full schedule with detailed game drill-down", "pages/1_Today.py"),
         ("📊", "Stats", "Standings · Batting · Pitching · Leaders", "pages/2_Stats.py"),
-        ("🆚", "Matchup Analysis", "H2H history · Rolling win-rate charts", "pages/3_Matchup_Analysis.py"),
+        (
+            "🆚",
+            "Matchup Analysis",
+            "H2H history · Rolling win-rate charts",
+            "pages/3_Matchup_Analysis.py",
+        ),
         ("🤖", "Models", "XGBoost features · Evaluation · Savant research", "pages/4_Models.py"),
-        ("📈", "Performance", "Pick history · Model P&L · Kelly bankroll", "pages/5_Performance.py"),
+        (
+            "📈",
+            "Performance",
+            "Pick history · Model P&L · Kelly bankroll",
+            "pages/5_Performance.py",
+        ),
         ("ℹ️", "About", "Methodology, data sources & tech stack", "pages/7_Info.py"),
     ]
     for row_tiles in (tiles[:3], tiles[3:]):
@@ -516,7 +547,10 @@ def home_page() -> None:
         for column, (icon, title, description, path) in zip(columns, row_tiles):
             with column:
                 with st.container(border=True):
-                    st.markdown(f'<div style="text-align:center;font-size:1.8rem;padding-top:4px">{icon}</div>', unsafe_allow_html=True)
+                    st.markdown(
+                        f'<div style="text-align:center;font-size:1.8rem;padding-top:4px">{icon}</div>',
+                        unsafe_allow_html=True,
+                    )
                     st.page_link(path, label=f"**{title}**")
                     st.caption(description)
 

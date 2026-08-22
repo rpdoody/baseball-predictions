@@ -62,3 +62,8 @@ ignore = ["E402"] # Streamlit pages intentionally adjust sys.path before local i
 python_version = "3.12"
 strict = true
 packages = ["src"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.3",
+]

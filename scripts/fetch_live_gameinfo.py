@@ -119,16 +119,16 @@ def fetch_completed_games(
     end_date: datetime.date,
 ) -> list[dict]:
     """Fetch regular-season schedule games and retain completed games."""
-    games = statsapi.schedule(
-        start_date=start_date.isoformat(),
-        end_date=end_date.isoformat(),
-        sportId=1,
-    ) or []
+    games = (
+        statsapi.schedule(
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+            sportId=1,
+        )
+        or []
+    )
 
-    return [
-        game for game in games
-        if is_completed_game(game)
-    ]
+    return [game for game in games if is_completed_game(game)]
 
 
 def _schedule_team_abbr(game: dict, side: str) -> str:
@@ -183,9 +183,7 @@ def normalize_game(game: dict) -> dict:
     home_runs = int(game["home_score"])
 
     if away_runs == home_runs:
-        raise ValueError(
-            f"Completed game {game['game_id']} has a tied final score."
-        )
+        raise ValueError(f"Completed game {game['game_id']} has a tied final score.")
 
     return {
         "game_id": int(game["game_id"]),
@@ -205,10 +203,9 @@ def normalize_game(game: dict) -> dict:
         "game_type": game.get("game_type", "R"),
         "status": game.get("status", ""),
         "source": "mlb_stats_api",
-        "retrieved_at_utc": datetime.datetime.now(
-            datetime.timezone.utc
-        ).isoformat(),
+        "retrieved_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
+
 
 def load_existing() -> pd.DataFrame:
     """Load valid prior output; ignore an absent, empty, or corrupt parquet."""
@@ -218,10 +215,7 @@ def load_existing() -> pd.DataFrame:
     try:
         return pd.read_parquet(OUTPUT_PATH)
     except Exception as exc:
-        print(
-            f"Warning: ignoring unreadable existing output "
-            f"({OUTPUT_PATH.name}): {exc}"
-        )
+        print(f"Warning: ignoring unreadable existing output ({OUTPUT_PATH.name}): {exc}")
         return pd.DataFrame()
 
 
@@ -234,7 +228,9 @@ def main() -> None:
         print(f"No completed {SEASON} regular-season games are available yet.")
         return
 
-    print(f"Fetching completed MLB regular-season games: {season_start} through {last_completed_date}")
+    print(
+        f"Fetching completed MLB regular-season games: {season_start} through {last_completed_date}"
+    )
 
     games = fetch_completed_games(season_start, last_completed_date)
     rows = [normalize_game(game) for game in games]
@@ -246,12 +242,7 @@ def main() -> None:
     fresh = pd.DataFrame(rows)
 
     team_columns = ["visteam", "hometeam", "wteam"]
-    blank_team_mask = (
-        fresh[team_columns]
-        .replace("", pd.NA)
-        .isna()
-        .any(axis=1)
-    )
+    blank_team_mask = fresh[team_columns].replace("", pd.NA).isna().any(axis=1)
 
     if blank_team_mask.any():
         raise ValueError(
@@ -286,6 +277,7 @@ def main() -> None:
     print(f"Games: {len(combined):,}")
     print(f"First game: {coverage_dates.min().date()}")
     print(f"Last game: {coverage_dates.max().date()}")
+
 
 if __name__ == "__main__":
     main()

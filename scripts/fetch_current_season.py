@@ -169,10 +169,7 @@ def _fetch_schedule(season: int, season_start: str) -> list[dict]:
         and game.get("home_score") is not None
     ]
 
-    print(
-        f"Found {len(completed)} completed regular-season games "
-        f"through {end_date.isoformat()}."
-    )
+    print(f"Found {len(completed)} completed regular-season games through {end_date.isoformat()}.")
 
     return completed
 

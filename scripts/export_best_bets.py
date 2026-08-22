@@ -261,9 +261,7 @@ def main() -> None:
             "confidence": confidence,
             "edge": edge,
             "tier": tier,
-            "odds": int(row["odds"])
-            if _safe_float(row.get("odds")) is not None
-            else None,
+            "odds": int(row["odds"]) if _safe_float(row.get("odds")) is not None else None,
             "line": _safe_float(row.get("line")),
             "notes": str(row.get("notes", "")) or None,
         }

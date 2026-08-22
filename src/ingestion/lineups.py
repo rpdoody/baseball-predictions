@@ -63,11 +63,7 @@ def _require_aware(observed_at: datetime) -> None:
 
 
 def _flatten_schedule_games(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    return [
-        game
-        for date_group in payload.get("dates", [])
-        for game in date_group.get("games", [])
-    ]
+    return [game for date_group in payload.get("dates", []) for game in date_group.get("games", [])]
 
 
 def _persist_raw_payload(

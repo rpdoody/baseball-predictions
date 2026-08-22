@@ -141,19 +141,19 @@ def _fetch_todays_schedule(
     """Fetch the complete MLB schedule for an explicit Eastern game date."""
     try:
         target_date = game_date or datetime.datetime.now(ET).date()
-        games = statsapi.schedule(
-            date=target_date.isoformat(),
-            sportId=1,
-        ) or []
+        games = (
+            statsapi.schedule(
+                date=target_date.isoformat(),
+                sportId=1,
+            )
+            or []
+        )
         allowed_game_types = {"R", "F", "D", "L", "W", "S"}
-        return [
-            game
-            for game in games
-            if game.get("game_type", "R") in allowed_game_types
-        ]
+        return [game for game in games if game.get("game_type", "R") in allowed_game_types]
     except Exception as exc:
         print(f"MLB schedule fetch failed for {game_date}: {exc}")
         return []
+
 
 @st.cache_data(show_spinner=False, ttl=300)
 def _fetch_confirmed_lineups(game_pk: int) -> dict:
@@ -168,10 +168,7 @@ def _fetch_confirmed_lineups(game_pk: int) -> dict:
             "game",
             {
                 "gamePk": int(game_pk),
-                "fields": (
-                    "liveData,boxscore,teams,players,battingOrder,"
-                    "person,fullName,position"
-                ),
+                "fields": ("liveData,boxscore,teams,players,battingOrder,person,fullName,position"),
             },
         )
         teams = data.get("liveData", {}).get("boxscore", {}).get("teams", {})
@@ -208,10 +205,9 @@ def _fetch_confirmed_lineups(game_pk: int) -> dict:
         # Require nine unique lineup spots per side. This avoids displaying
         # incomplete projected/partial batting orders as confirmed.
         expected_slots = set(range(1, 10))
-        is_confirmed = (
-            expected_slots.issubset({row["order"] for row in lineups["away"]})
-            and expected_slots.issubset({row["order"] for row in lineups["home"]})
-        )
+        is_confirmed = expected_slots.issubset(
+            {row["order"] for row in lineups["away"]}
+        ) and expected_slots.issubset({row["order"] for row in lineups["home"]})
 
         if not is_confirmed:
             return empty
@@ -223,7 +219,8 @@ def _fetch_confirmed_lineups(game_pk: int) -> dict:
         }
     except Exception:
         return empty
-    
+
+
 @st.cache_data(show_spinner=False, ttl=86400)
 def _load_latest_odds() -> pd.DataFrame:
     """Return odds from the latest morning-pipeline CSV without a live API call."""
@@ -264,7 +261,11 @@ def _load_game_context_cache() -> dict:
         max_season = int(gi["season"].max())
         recent = gi[gi["season"] >= max_season - 2].copy()
         league_rpg = recent["total_runs"].mean()
-        park = recent.groupby("hometeam", observed=False).agg(games=("gid", "count"), runs=("total_runs", "sum")).reset_index()
+        park = (
+            recent.groupby("hometeam", observed=False)
+            .agg(games=("gid", "count"), runs=("total_runs", "sum"))
+            .reset_index()
+        )
         park = park[park["games"] >= 20]
         park["pf"] = (park["runs"] / park["games"] / league_rpg).round(3)
         park["short"] = park["hometeam"].map(code_to_short)
@@ -280,7 +281,11 @@ def _load_game_context_cache() -> dict:
             daynight = pd.concat(daynight_rows, ignore_index=True)
             daynight["dn"] = daynight["dn"].fillna("n").str.lower().str.strip()
             daynight = daynight[daynight["season"] >= max_season - 2]
-            grouped = daynight.groupby(["team", "dn"], observed=False).agg(games=("won", "count"), wins=("won", "sum")).reset_index()
+            grouped = (
+                daynight.groupby(["team", "dn"], observed=False)
+                .agg(games=("won", "count"), wins=("won", "sum"))
+                .reset_index()
+            )
             grouped["wpct"] = (grouped["wins"] / grouped["games"].clip(lower=1)).round(3)
             grouped["short"] = grouped["team"].map(code_to_short)
             for _, row in grouped.iterrows():
@@ -293,9 +298,17 @@ def _load_game_context_cache() -> dict:
     try:
         csv_path = retro_dir / "gameinfo.csv"
         if csv_path.exists():
-            gi_csv = pd.read_csv(csv_path, low_memory=False, usecols=lambda column: column in {"gid", "hometeam", "vruns", "hruns", "season"})
+            gi_csv = pd.read_csv(
+                csv_path,
+                low_memory=False,
+                usecols=lambda column: column in {"gid", "hometeam", "vruns", "hruns", "season"},
+            )
         else:
-            needed = [column for column in ("gid", "hometeam", "vruns", "hruns", "season") if column in gi_raw.columns]
+            needed = [
+                column
+                for column in ("gid", "hometeam", "vruns", "hruns", "season")
+                if column in gi_raw.columns
+            ]
             gi_csv = gi_raw[needed].copy()
         gi_csv["season"] = pd.to_numeric(gi_csv["season"], errors="coerce")
         gi_csv["vruns"] = pd.to_numeric(gi_csv["vruns"], errors="coerce")
@@ -303,30 +316,52 @@ def _load_game_context_cache() -> dict:
         gi_csv["total_runs"] = gi_csv["vruns"] + gi_csv["hruns"]
         max_csv_season = int(gi_csv["season"].dropna().max())
         recent_csv = gi_csv[gi_csv["season"] >= max_csv_season - 2]
-        park_runs = recent_csv.groupby("hometeam", observed=False)["total_runs"].agg(["mean", "count"]).reset_index()
+        park_runs = (
+            recent_csv.groupby("hometeam", observed=False)["total_runs"]
+            .agg(["mean", "count"])
+            .reset_index()
+        )
         park_runs.columns = ["team", "avg_runs", "games"]
         park_runs = park_runs[park_runs["games"] >= 20]
         park_runs["short"] = park_runs["team"].map(code_to_short)
-        out["ump_park_avg"] = {row["short"]: round(row["avg_runs"], 2) for _, row in park_runs.iterrows() if row.get("short")}
+        out["ump_park_avg"] = {
+            row["short"]: round(row["avg_runs"], 2)
+            for _, row in park_runs.iterrows()
+            if row.get("short")
+        }
     except Exception:
         pass
 
     try:
         gi_ump = gi_raw.copy()
         if "umphome" in gi_ump.columns:
-            gi_ump["date"] = pd.to_datetime(gi_ump["date"].astype(str), format="%Y%m%d", errors="coerce")
+            gi_ump["date"] = pd.to_datetime(
+                gi_ump["date"].astype(str), format="%Y%m%d", errors="coerce"
+            )
             gi_ump = gi_ump.sort_values("date").reset_index(drop=True)
             league_ump_mean = float(gi_ump["total_runs"].mean())
-            ump_grouped = gi_ump.groupby("umphome", observed=False)["total_runs"].agg(runs_avg="mean", games="count").reset_index()
+            ump_grouped = (
+                gi_ump.groupby("umphome", observed=False)["total_runs"]
+                .agg(runs_avg="mean", games="count")
+                .reset_index()
+            )
             ump_grouped.columns = ["ump_id", "runs_avg", "games"]
             ump_grouped["over_mean"] = (ump_grouped["runs_avg"] - league_ump_mean).round(2)
             ump_grouped["above_avg"] = ump_grouped["runs_avg"] > league_ump_mean
 
             def ump_trend(group: pd.DataFrame) -> float:
                 values = group.sort_values("date")["total_runs"].values
-                return round(float(values[-20:].mean() - values[-40:-20].mean()), 2) if len(values) >= 40 else 0.0
+                return (
+                    round(float(values[-20:].mean() - values[-40:-20].mean()), 2)
+                    if len(values) >= 40
+                    else 0.0
+                )
 
-            trends = gi_ump.groupby("umphome", observed=False).apply(ump_trend, include_groups=False).reset_index()
+            trends = (
+                gi_ump.groupby("umphome", observed=False)
+                .apply(ump_trend, include_groups=False)
+                .reset_index()
+            )
             trends.columns = ["ump_id", "trend"]
             ump_grouped = ump_grouped.merge(trends, on="ump_id", how="left")
             ump_grouped["trend"] = ump_grouped["trend"].fillna(0.0)
@@ -351,10 +386,16 @@ def _load_game_context_cache() -> dict:
         max_pitching_season = int(pitching["season"].dropna().max())
         pitching = pitching[pitching["season"] >= max_pitching_season - 1]
         pitching["ip"] = pd.to_numeric(pitching["p_ipouts"], errors="coerce").fillna(0) / 3
-        bullpen = pitching.groupby("team", observed=False).agg(total_ip=("ip", "sum"), total_games=("gid", "nunique")).reset_index()
+        bullpen = (
+            pitching.groupby("team", observed=False)
+            .agg(total_ip=("ip", "sum"), total_games=("gid", "nunique"))
+            .reset_index()
+        )
         bullpen["ip_pg"] = (bullpen["total_ip"] / bullpen["total_games"].clip(lower=1)).round(2)
         bullpen["short"] = bullpen["team"].map(code_to_short)
-        out["bullpen_ip_pg"] = {row["short"]: row["ip_pg"] for _, row in bullpen.iterrows() if row.get("short")}
+        out["bullpen_ip_pg"] = {
+            row["short"]: row["ip_pg"] for _, row in bullpen.iterrows() if row.get("short")
+        }
     except Exception:
         pass
 
@@ -363,9 +404,25 @@ def _load_game_context_cache() -> dict:
         if {"season", "bat", "team"}.issubset(players.columns):
             max_player_season = int(players["season"].dropna().max())
             players = players[players["season"] >= max_player_season - 1]
-            platoon = players.groupby("team", observed=False).apply(lambda group: pd.Series({"pct_left": round((group["bat"] == "L").mean(), 3), "pct_right": round((group["bat"] == "R").mean(), 3)}), include_groups=False).reset_index()
+            platoon = (
+                players.groupby("team", observed=False)
+                .apply(
+                    lambda group: pd.Series(
+                        {
+                            "pct_left": round((group["bat"] == "L").mean(), 3),
+                            "pct_right": round((group["bat"] == "R").mean(), 3),
+                        }
+                    ),
+                    include_groups=False,
+                )
+                .reset_index()
+            )
             platoon["short"] = platoon["team"].map(code_to_short)
-            out["platoon"] = {row["short"]: {"pct_left": row["pct_left"], "pct_right": row["pct_right"]} for _, row in platoon.iterrows() if row.get("short")}
+            out["platoon"] = {
+                row["short"]: {"pct_left": row["pct_left"], "pct_right": row["pct_right"]}
+                for _, row in platoon.iterrows()
+                if row.get("short")
+            }
     except Exception:
         pass
 
@@ -380,7 +437,12 @@ def _fetch_game_umpires(game_pk: int) -> dict:
     try:
         data = statsapi.get("game", {"gamePk": game_pk, "fields": "liveData,boxscore,officials"})
         officials = data.get("liveData", {}).get("boxscore", {}).get("officials", [])
-        type_map = {"Home Plate": "home_plate", "First Base": "first", "Second Base": "second", "Third Base": "third"}
+        type_map = {
+            "Home Plate": "home_plate",
+            "First Base": "first",
+            "Second Base": "second",
+            "Third Base": "third",
+        }
         result: dict = {}
         for official in officials:
             official_type = official.get("officialType", "")
@@ -409,18 +471,28 @@ def _fetch_retrosheet_game_umpires(home_retro: str, away_retro: str, game_date: 
         if not home_code or not away_code:
             return {}
         gameinfo = gameinfo.copy()
-        gameinfo["game_date"] = pd.to_datetime(gameinfo["date"].astype(str), format="%Y%m%d", errors="coerce").dt.date
+        gameinfo["game_date"] = pd.to_datetime(
+            gameinfo["date"].astype(str), format="%Y%m%d", errors="coerce"
+        ).dt.date
         target_date = pd.to_datetime(game_date, errors="coerce").date()
         if pd.isna(target_date):
             return {}
-        match = gameinfo[(gameinfo["hometeam"] == home_code) & (gameinfo["visteam"] == away_code) & (gameinfo["game_date"] == target_date)]
+        match = gameinfo[
+            (gameinfo["hometeam"] == home_code)
+            & (gameinfo["visteam"] == away_code)
+            & (gameinfo["game_date"] == target_date)
+        ]
         if match.empty:
             return {}
         row = match.iloc[0]
         return {
-            "home_plate": str(row.get("umphome", "")).strip() if not pd.isna(row.get("umphome", "")) else "",
+            "home_plate": str(row.get("umphome", "")).strip()
+            if not pd.isna(row.get("umphome", ""))
+            else "",
             "first": str(row.get("ump1b", "")).strip() if not pd.isna(row.get("ump1b", "")) else "",
-            "second": str(row.get("ump2b", "")).strip() if not pd.isna(row.get("ump2b", "")) else "",
+            "second": str(row.get("ump2b", "")).strip()
+            if not pd.isna(row.get("ump2b", ""))
+            else "",
             "third": str(row.get("ump3b", "")).strip() if not pd.isna(row.get("ump3b", "")) else "",
         }
     except Exception:
@@ -490,7 +562,12 @@ def _fetch_team_rest_days(team_full_name: str) -> int | None:
         start = (today - datetime.timedelta(days=10)).strftime("%m/%d/%Y")
         end = (today - datetime.timedelta(days=1)).strftime("%m/%d/%Y")
         schedule = statsapi.schedule(teamId=team_id, startDate=start, endDate=end) or []
-        played = sorted(datetime.date.fromisoformat(game["game_date"]) for game in schedule if game.get("game_date") and game.get("status") not in {"Postponed", "Cancelled", "Suspended"})
+        played = sorted(
+            datetime.date.fromisoformat(game["game_date"])
+            for game in schedule
+            if game.get("game_date")
+            and game.get("status") not in {"Postponed", "Cancelled", "Suspended"}
+        )
         return (today - played[-1]).days if played else None
     except Exception:
         return None
@@ -499,6 +576,7 @@ def _fetch_team_rest_days(team_full_name: str) -> int | None:
 @st.cache_data(show_spinner=False, ttl=3600)
 def _fetch_team_standings(season: int | None = None) -> dict[str, dict]:
     """Return current-season MLB standings, with prior-season pregame fallback."""
+
     def parse(raw_standings) -> dict[str, dict]:
         result: dict[str, dict] = {}
         for division_data in raw_standings.values():
@@ -508,13 +586,21 @@ def _fetch_team_standings(season: int | None = None) -> dict[str, dict]:
                 pct = team.get("pct")
                 if pct in (None, "—", ""):
                     pct = round(wins / (wins + losses), 3) if wins + losses else 0.500
-                result[team["name"]] = {"W": wins, "L": losses, "pct": pct, "streak": team.get("streak", "—"), "L10": team.get("lastTen", "—")}
+                result[team["name"]] = {
+                    "W": wins,
+                    "L": losses,
+                    "pct": pct,
+                    "streak": team.get("streak", "—"),
+                    "L10": team.get("lastTen", "—"),
+                }
         return result
 
     try:
         current_season = season or datetime.datetime.now(ET).year
         result = parse(statsapi.standings_data(season=current_season))
-        total_wins = sum(int(value["W"]) for value in result.values() if str(value.get("W", "")).isdigit())
+        total_wins = sum(
+            int(value["W"]) for value in result.values() if str(value.get("W", "")).isdigit()
+        )
         if total_wins == 0 and season is None:
             prior = parse(statsapi.standings_data(season=current_season - 1))
             if prior:
@@ -533,7 +619,9 @@ def _fetch_pitcher_stats(pitcher_name: str) -> dict:
         results = statsapi.lookup_player(pitcher_name)
         if not results:
             return {}
-        data = statsapi.player_stat_data(results[0]["id"], group="pitching", type="season", sportId=1)
+        data = statsapi.player_stat_data(
+            results[0]["id"], group="pitching", type="season", sportId=1
+        )
         if not data or not data.get("stats"):
             return {}
         stats = data["stats"][0]["stats"]
@@ -584,8 +672,22 @@ def _fetch_espn_odds(
             competition = event["competitions"][0]
             event_id = event["id"]
             competition_id = competition["id"]
-            home_name = next((competitor["team"]["displayName"] for competitor in competition["competitors"] if competitor["homeAway"] == "home"), "")
-            away_name = next((competitor["team"]["displayName"] for competitor in competition["competitors"] if competitor["homeAway"] == "away"), "")
+            home_name = next(
+                (
+                    competitor["team"]["displayName"]
+                    for competitor in competition["competitors"]
+                    if competitor["homeAway"] == "home"
+                ),
+                "",
+            )
+            away_name = next(
+                (
+                    competitor["team"]["displayName"]
+                    for competitor in competition["competitors"]
+                    if competitor["homeAway"] == "away"
+                ),
+                "",
+            )
             odds_response = requests.get(
                 "https://sports.core.api.espn.com/v2/sports/baseball/leagues/mlb"
                 f"/events/{event_id}/competitions/{competition_id}/odds",
@@ -628,10 +730,26 @@ def _fetch_espn_odds(
 def _load_precomputed() -> dict:
     """Load all precomputed Retrosheet and model datasets once per process."""
     gameinfo = pd.read_parquet(ROOT / "data_files" / "retrosheet" / "gameinfo.parquet")
-    mc_ranking = pd.read_csv(PROCESSED / "mc_feature_ranking.csv") if (PROCESSED / "mc_feature_ranking.csv").exists() else None
-    mc_trials = pd.read_parquet(PROCESSED / "mc_feature_trials.parquet") if (PROCESSED / "mc_feature_trials.parquet").exists() else None
-    savant_metrics = pd.read_parquet(PROCESSED / "savant_model_metrics.parquet") if (PROCESSED / "savant_model_metrics.parquet").exists() else None
-    savant_imps = pd.read_parquet(PROCESSED / "savant_model_importances.parquet") if (PROCESSED / "savant_model_importances.parquet").exists() else None
+    mc_ranking = (
+        pd.read_csv(PROCESSED / "mc_feature_ranking.csv")
+        if (PROCESSED / "mc_feature_ranking.csv").exists()
+        else None
+    )
+    mc_trials = (
+        pd.read_parquet(PROCESSED / "mc_feature_trials.parquet")
+        if (PROCESSED / "mc_feature_trials.parquet").exists()
+        else None
+    )
+    savant_metrics = (
+        pd.read_parquet(PROCESSED / "savant_model_metrics.parquet")
+        if (PROCESSED / "savant_model_metrics.parquet").exists()
+        else None
+    )
+    savant_imps = (
+        pd.read_parquet(PROCESSED / "savant_model_importances.parquet")
+        if (PROCESSED / "savant_model_importances.parquet").exists()
+        else None
+    )
     return {
         "gameinfo": gameinfo,
         "standings": pd.read_parquet(PROCESSED / "standings.parquet"),
@@ -664,7 +782,9 @@ def _load_model_results() -> dict | None:
                     "brier_score": float(row["brier_score"]),
                     "log_loss": float(row["log_loss"]),
                 },
-                "importances": importances_df[importances_df["model"] == model_name][["feature", "importance"]].reset_index(drop=True),
+                "importances": importances_df[importances_df["model"] == model_name][
+                    ["feature", "importance"]
+                ].reset_index(drop=True),
                 "feature_cols": [],
                 "test_df": pd.read_parquet(PROCESSED / f"{model_name}_test_df.parquet"),
                 "train_size": int(row["train_size"]),
@@ -680,14 +800,35 @@ def _load_eval_backtests() -> dict | None:
     """Load precomputed backtest objects."""
     try:
         from src.evaluation.backtester import BacktestResult, BetResult
+
         bets_df = pd.read_parquet(PROCESSED / "backtest_bets.parquet")
         summary_df = pd.read_parquet(PROCESSED / "backtest_summary.parquet")
         backtests = {}
         for model_name in ["moneyline", "totals"]:
             subset = bets_df[bets_df["model_name"] == model_name]
             summary = summary_df[summary_df["model"] == model_name].iloc[0]
-            bets = [BetResult(game_id=row.game_id, date=row.date, pick_type=row.pick_type, pick_value="", predicted_prob=float(row.predicted_prob), confidence_score=float(row.confidence_score), confidence=row.confidence, edge=float(row.edge), american_odds=int(row.american_odds), result=row.result, profit_units=float(row.profit_units)) for row in subset.itertuples(index=False)]
-            backtests[model_name] = BacktestResult(model_name=model_name, pick_type=str(summary["pick_type"]), period=str(summary["period"]), bets=bets)
+            bets = [
+                BetResult(
+                    game_id=row.game_id,
+                    date=row.date,
+                    pick_type=row.pick_type,
+                    pick_value="",
+                    predicted_prob=float(row.predicted_prob),
+                    confidence_score=float(row.confidence_score),
+                    confidence=row.confidence,
+                    edge=float(row.edge),
+                    american_odds=int(row.american_odds),
+                    result=row.result,
+                    profit_units=float(row.profit_units),
+                )
+                for row in subset.itertuples(index=False)
+            ]
+            backtests[model_name] = BacktestResult(
+                model_name=model_name,
+                pick_type=str(summary["pick_type"]),
+                period=str(summary["period"]),
+                bets=bets,
+            )
         return backtests
     except FileNotFoundError:
         return None
@@ -698,12 +839,20 @@ def _load_eval_backtests() -> dict | None:
 
 def _kelly_fraction(prob: float, american_odds: int) -> float:
     """Return full-Kelly wager fraction."""
-    decimal = american_odds / 100.0 + 1.0 if american_odds >= 0 else 100.0 / abs(american_odds) + 1.0
+    decimal = (
+        american_odds / 100.0 + 1.0 if american_odds >= 0 else 100.0 / abs(american_odds) + 1.0
+    )
     b = decimal - 1.0
     return max((b * prob - (1.0 - prob)) / b, 0.0)
 
 
-def get_dataframe_height(df: pd.DataFrame, row_height: int = 35, header_height: int = 38, padding: int = 2, max_height: int = 600) -> int:
+def get_dataframe_height(
+    df: pd.DataFrame,
+    row_height: int = 35,
+    header_height: int = 38,
+    padding: int = 2,
+    max_height: int = 600,
+) -> int:
     """Calculate optimal Streamlit dataframe height in pixels."""
     calculated = len(df) * row_height + header_height + padding
     return min(calculated, max_height) if max_height else calculated
@@ -711,11 +860,16 @@ def get_dataframe_height(df: pd.DataFrame, row_height: int = 35, header_height: 
 
 def _american_to_implied_prob(american_odds: int) -> float:
     """Convert American odds to implied probability without de-vigging."""
-    return 100.0 / (american_odds + 100.0) if american_odds >= 0 else abs(american_odds) / (abs(american_odds) + 100.0)
+    return (
+        100.0 / (american_odds + 100.0)
+        if american_odds >= 0
+        else abs(american_odds) / (abs(american_odds) + 100.0)
+    )
 
 
 def _estimate_win_prob(home_full: str, away_full: str, live_standings: dict[str, dict]) -> float:
     """Quick current-record logistic estimate with home-field adjustment."""
+
     def pct(name: str) -> float:
         data = live_standings.get(name, {})
         try:
@@ -723,6 +877,7 @@ def _estimate_win_prob(home_full: str, away_full: str, live_standings: dict[str,
             return float(value) if float(value) > 0 else 0.500
         except (TypeError, ValueError):
             return 0.500
+
     difference = pct(home_full) - pct(away_full) + 0.04
     return max(0.10, min(0.90, 1.0 / (1.0 + math.exp(-difference * 8))))
 
@@ -762,7 +917,13 @@ def render_sidebar(show_year_filter: bool = True) -> tuple[int, int]:
             st.markdown("---")
             st.header("Season Filters")
             current_year = datetime.datetime.now(ET).year
-            min_year, max_year = st.slider("Season range", min_value=2020, max_value=current_year, value=(2020, current_year), step=1)
+            min_year, max_year = st.slider(
+                "Season range",
+                min_value=2020,
+                max_value=current_year,
+                value=(2020, current_year),
+                step=1,
+            )
             st.caption(f"Using {min_year}–{max_year} regular-season games.")
             return min_year, max_year
     current_year = datetime.datetime.now(ET).year

@@ -115,6 +115,11 @@ ocr = [
     { name = "pytesseract" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "ruff" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "apscheduler", specifier = ">=3.10,<4" },
@@ -147,6 +152,9 @@ requires-dist = [
     { name = "xgboost", marker = "extra == 'models'", specifier = ">=3,<4" },
 ]
 provides-extras = ["models", "ocr", "api", "dev"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "ruff", specifier = ">=0.16.3" }]
 
 [[package]]
 name = "beautifulsoup4"

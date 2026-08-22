@@ -18,6 +18,7 @@ def get_api_key() -> str:
 
     try:
         import streamlit as st
+
         return st.secrets["ODDS_API_KEY"]
     except Exception as exc:
         raise RuntimeError(

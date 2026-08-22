@@ -256,4 +256,3 @@ with tab_form:
                 hide_index=True,
                 height=get_dataframe_height(recent_20, max_height=760),
             )
-
