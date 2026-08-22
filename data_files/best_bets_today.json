@@ -1,15 +1,15 @@
 {
   "meta": {
     "sport": "MLB",
-    "generated_at": "2026-08-22T15:32:07.530880+00:00",
+    "generated_at": "2026-08-22T15:42:41.505637+00:00",
     "model_version": "1.0.0",
     "season": "2026",
-    "status": "no_qualifying_picks",
+    "status": "model_incompatible",
     "tier_definition": "edge-v1",
     "lookahead_days": 0,
     "source_commit": "",
     "total_bets": 0,
-    "notes": "No MLB picks for 2026-08-22",
+    "notes": "Validated model bundle unavailable: moneyline_xgb_v1.joblib=missing_manifest, spread_xgb_v1.joblib=missing_manifest, totals_xgb_v1.joblib=missing_manifest",
     "target_date": "2026-08-22",
     "picks_count": 0
   },
